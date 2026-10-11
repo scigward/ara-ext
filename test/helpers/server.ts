@@ -13,7 +13,7 @@ export interface FakeSite {
 type Body = string | Uint8Array | { status: number, body?: string }
 
 export interface SiteOptions {
-  // false makes it ignore Range headers like some servers do
+  // false makes it ignore range headers like some servers do
   ranges?: boolean
   // wait this long before answering anything
   delay?: number
@@ -46,7 +46,7 @@ export function fakeSite (routes: Record<string, Body | ((hit: Hit) => Body)>, o
     if (typeof body === 'string') return new Response(body)
 
     const partial = range && options.ranges !== false
-    // from() so the bytes sit in a plain ArrayBuffer, which is what Response wants
+    // from() so the bytes sit in a plain arraybuffer, which is what response wants
     return new Response(Uint8Array.from(partial ? slice(body, range) : body), { status: partial ? 206 : 200 })
   }
 

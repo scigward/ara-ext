@@ -9,6 +9,7 @@ import { fakeSite, iosLike } from './helpers/server.ts'
 import { buildZip } from './helpers/zipbuilder.ts'
 
 import type { Hit, SiteOptions } from './helpers/server.ts'
+import type { Item } from './helpers/zipbuilder.ts'
 import type { SubtitleQuery } from '../src/types.ts'
 
 const ORIGIN = 'https://miraianime.net'
@@ -242,7 +243,7 @@ test('when every zip is gone there is nothing to report', async () => {
 })
 
 // one anime page and one zip, enough to try how a zip is read
-function single (zipName: string, episodes: string, files: Array<{ name: string, data: string }>, extra: { release?: string, translators?: string[] } = {}) {
+function single (zipName: string, episodes: string, files: Item[], extra: { release?: string, translators?: string[] } = {}) {
   const zip = `${UPLOADS}/${zipName}`
   return setup({
     ...Object.fromEntries([malPage(1, 'one')]),
@@ -303,8 +304,44 @@ test('a movie page that says OVA instead of a number still answers a one episode
   assert.equal((await ext.single(q({ ...query, episode: 1, media: { format: 'MOVIE' } }))).length, 1)
 })
 
+test('a zip of zips, one per episode, is opened one level down', async () => {
+  const inner = (episode: number) => buildZip([{ name: `[Crunchyroll] Boruto - ${String(episode).padStart(3, '0')}.ass`, data: ass(`inner ${episode}`) }, { name: 'Mirai.ai.txt', data: CREDITS }])
+  const { ext, q } = single('Boruto.zip', `${badge('001')} إلى ${badge('293')}`, [
+    { name: 'Boruto - 001 [BD][Crunchyroll & Zero-Kon & Almighty].zip', data: inner(1), method: 0 },
+    { name: 'Boruto - 002 [BD][Crunchyroll & Almighty].zip', data: inner(2), method: 0 },
+    { name: 'www.Mirai.ai.txt', data: CREDITS }
+  ], { release: 'BD', translators: ['Zero-Kon', 'Almighty'] })
+
+  const got = await ext.single(q({ ...query, episode: 2 }))
+  assert.deepEqual(got.map(g => g.language), ['Arabic - Crunchyroll & Almighty (BD).ass'])
+  assert.match(await text(got[0]!.url), /inner 2\b/)
+})
+
+test('a number series-wide in a lone file does not stop it being the file, and a zip numbered its own way is read by position', async () => {
+  const lone = single('Espadas.zip', badge('06'), [{ name: '[ESPADAS] Bleach - 46.ass', data: ass('forty six') }, { name: 'Arial.ttf', data: filler(500, 4) }])
+  assert.match(await text((await lone.ext.single(lone.q({ ...query, episode: 6 })))[0]!.url), /forty six\b/)
+
+  const files = Array.from({ length: 12 }, (_, i) => ({ name: `[Rhythm] Re Zero - ${39 + i} [S2-${14 + i}].ass`, data: ass(`line ${39 + i}`) }))
+  const part = single('Rhythm.zip', `${badge('01')} إلى ${badge('12')}`, files)
+  assert.match(await text((await part.ext.single(part.q({ ...query, episode: 1 })))[0]!.url), /line 39\b/)
+  assert.match(await text((await part.ext.single(part.q({ ...query, episode: 12 })))[0]!.url), /line 50\b/)
+})
+
+test('the same episode from two streaming services is told apart by the tag only one has', async () => {
+  const { ext, q } = single('Shahid.zip', badge('01'), [
+    { name: '[Shahid] Bleach - 41 (407) [AMZN][VARYG].ass', data: ass('a') },
+    { name: '[Shahid] Bleach - 41 (407) [DSNP][VARYG].ass', data: ass('b') }
+  ], { translators: ['Shahid'] })
+  assert.deepEqual((await ext.single(q({ ...query, episode: 1 }))).map(g => g.language).sort(), ['Arabic - Shahid (WEB) AMZN.ass', 'Arabic - Shahid (WEB) DSNP.ass'])
+})
+
+test('a file too big to be worth opening is left out without a word', async () => {
+  const huge = single('Huge.zip', badge('01'), [{ name: '[G] Show - 01.ass', data: ass('x'), claimSize: 50 * 1024 * 1024 }])
+  assert.deepEqual(await huge.ext.single(huge.q({ ...query, episode: 1 })), [])
+})
+
 test('a zip with no subtitle for the episode, or only credits, gives nothing', async () => {
-  const { ext, q } = setup({ ...kusuriya(), [`${UPLOADS}/Cr-01.zip`]: buildZip([{ name: 'Mirai Anime.txt', data: CREDITS }]), [`${UPLOADS}/CD-01.zip`]: buildZip([{ name: 'Show - 07.ass', data: ass('x') }]) })
+  const { ext, q } = setup({ ...kusuriya(), [`${UPLOADS}/Cr-01.zip`]: buildZip([{ name: 'Mirai Anime.txt', data: CREDITS }]), [`${UPLOADS}/CD-01.zip`]: buildZip([{ name: 'Show - 07.ass', data: ass('x') }, { name: 'Show - 08.ass', data: ass('y') }]) })
   assert.deepEqual(await ext.single(q()), [])
 })
 

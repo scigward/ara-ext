@@ -5,10 +5,12 @@ import type { Options, SubtitleQuery } from './types.ts'
 
 export interface Step {
   block: Block
-  // the episode hayase means, then the series-wide number as a fallback
+  // what hayase means, then the series-wide number as a fallback
   episodes: [number, number | undefined]
-  // the zip is only for this one episode, so a single subtitle in it is the one whatever it's called
+  // this zip is for this one episode only
   lone: boolean
+  // the range the page lists, if it lists one
+  span?: [number, number]
 }
 
 export function maxFiles (options: Options): number {
@@ -25,11 +27,11 @@ export function plan (blocks: Block[], query: SubtitleQuery, options: Options): 
   let steps: Step[] = []
   for (const episode of episodes) {
     if (episode === undefined) continue
-    steps = blocks.filter(block => covers(block, episode)).map(block => ({ block, episodes, lone: lone(block) }))
+    steps = blocks.filter(block => covers(block, episode)).map(block => ({ block, episodes, lone: lone(block), span: block.episodes.length === 1 ? block.episodes[0] : undefined }))
     if (steps.length) break
   }
 
-  // a movie or a one off often says "OVA" or nothing at all where the episode number goes
+  // movies and one offs often say "ova" or nothing where the episode number goes
   if (!steps.length && (query.episodeCount === 1 || query.media?.format === 'MOVIE')) {
     steps = blocks.filter(block => !block.episodes.length).map(block => ({ block, episodes, lone: true }))
   }
@@ -40,7 +42,7 @@ export function plan (blocks: Block[], query: SubtitleQuery, options: Options): 
     return at < 0 ? prefer.length : at
   }
 
-  // sort is stable, so equal ranks keep the order of the page
-  // two spare in case a zip turns out to be gone or has nothing for us
+  // sort is stable so the page order survives
+  // two spares in case a zip is gone or has nothing
   return steps.sort((a, b) => rank(a) - rank(b)).slice(0, maxFiles(options) + 2)
 }

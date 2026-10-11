@@ -2,71 +2,72 @@ import { formatOf } from './subtitle.ts'
 
 import type { Format } from './subtitle.ts'
 
+type Range = [number, number]
+
 export interface Described {
   path: string
-  // what the extension says, a txt only counts when its name has an episode and is read for what it is
-  format: Format | 'txt'
-  // from the file name, nothing when the name has no number we trust. a later season's batch often
-  // numbers through the whole series here (23 for the first episode of season 2)
-  episodes?: [number, number]
-  // false when that number is only the start of the name, a title like "009 Re:Cyborg" has one too
+  // what the extension says. txt and zip only count with an episode in the name: a txt is read for what it is,
+  // a zip is one episode in its own archive (a few batches are zips of zips)
+  format: Format | 'txt' | 'zip'
+  // from the name, nothing if it has no number we trust. later seasons often number through the whole series (23)
+  episodes?: Range
+  // false when the number is just the start of the name, a title like "009 re:cyborg" has one
   strong: boolean
-  // the number inside the season, when the name tags one: [S2-01], (P2 - 03)
-  season?: [number, number]
+  // the number inside the season when the name tags one: [s2-01], (p2 - 03)
+  season?: Range
   group?: string
-  // the name without its brackets, to tell apart files that are otherwise alike
-  title: string
-  // the leftover tags, 1080p and the like, they tell two files of one group apart
+  // other bits in brackets (1080p, a streaming service, the release group), they tell files apart
   tags: string[]
+  // the name without its brackets
+  title: string
   version: number
 }
 
-// a batch folder says 001-201 and that must not read as one file spanning the lot,
-// real multi episode files are the double length ones
+// a batch folder says 001-201, that's no single file. real multi episode files are the double length ones
 const MAX_SPAN = 4
 
 const YEAR = /^(?:19|20)\d\d$/
 const TAG = /^(?:v\d+|\d{3,4}[pi]|\d{3,4}x\d{3,4}|[\da-f]{8}|bd(?:rip)?|blu-?ray|web(?:[ -]?(?:dl|rip))?|tv(?:rip)?|dvd(?:rip)?|hdtv|raw|aac|ac3|flac|x26[45]|h\.?26[45]|hevc|avc|\d+-?bits?|dual[ -]?audio|multi|batch|complete|(?:ar|ara|arabic)(?:[ -]?subs?)?|subs?|ass|srt|vtt|ssa|(?:19|20)\d\d)$/i
 const SEASON_TAG = /^(?:S|P|Part\s*|Season\s*|Cour\s*)\d{1,2}\s*[-–]?\s*(?:E|EP)?\s*(\d{1,3})(?:\s+(?:END|FINAL|FIN))?$/i
 const EPISODE_TAG = /^(?:E(?:P)?\s*)?(\d{1,4})(?:v\d+)?$/i
+const PART_TAG = /^Part\s*(\d{1,2})$/i
 // the credits file every zip carries
 const CREDITS = /^(?:www\.)?mirai/i
 
 const asciiDigits = (text: string) => text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660))
 
-function span (a: string, b?: string): [number, number] | undefined {
+function span (a: string, b?: string): Range | undefined {
   const from = Number(a)
   const to = b === undefined ? from : Number(b)
   return to >= from && to - from < MAX_SPAN ? [from, to] : undefined
 }
 
 const OUTSIDE = [
-  // S02E05, S02E05-E06
+  // s02e05, s02e05-e06
   /\bS\d{1,2}\s*E(\d{1,4})(?:v\d+)?(?:\s*[-~&+]\s*E?(\d{1,4}))?(?![\d.])/i,
-  // E05, EP05, Episode 05, EP05-06
+  // e05, ep05, episode 05, ep05-06
   /\bE(?:P|pisode)?\s*(\d{1,4})(?:v\d+)?(?:\s*[-~&+]\s*E?(?:P|pisode)?\s*(\d{1,4}))?(?![\d.]|\s*p\b)/i,
   /(?:الحلقة|حلقة)\s*(\d{1,4})(?:\s*[-~&+]\s*(\d{1,4}))?/,
   /第\s*(\d{1,4})\s*話/
 ]
 
-// "Show - 05", "Show - 05v2", "Show - 001-002", the usual fansub way, the last one wins
+// "show - 05", "show - 05v2", "show - 001-002", the usual fansub way, the last one wins
 const DASH = /(?:^|\s)-\s*(\d{1,4})(?:v\d+)?(?:\s*[-~&+]\s*(\d{1,4})(?:v\d+)?)?(?=\s|$)/g
-// "ClassicaLoid-07-Arabic Subtitle", no spaces around the dashes
-// (no lookbehind anywhere in this repo, safari only learned it in 16.4 and one in a module stops it from loading)
+// "classicaloid-07-arabic subtitle", no spaces around the dashes.
+// (no lookbehind anywhere here, safari got it in 16.4 and one in a module stops it loading)
 const HYPHEN = /(?:^|\D)-(\d{1,4})(?:v\d+)?(?=-|\s|$)/g
-// "Show 05", "Show 01 and 02"
+// "show 05", "show 01 and 02"
 const TRAILING = /(?:^|\s)(\d{1,4})(?:v\d+)?(?:\s*(?:[-~&+,]|and)\s*(\d{1,4})(?:v\d+)?)?\s*$/i
-// "SP1", "OVA 2", "Special 3"
+// "sp1", "ova 2", "special 3"
 const SPECIAL = /\b(?:SP|OVA|OAD|ONA|Special)s?\s*0*(\d{1,3})\b/i
 
 interface Found {
-  range?: [number, number]
-  // false when it is only a bare number at the start of the name, which could just as well be the title
+  range?: Range
   strong: boolean
 }
 
 function episodesOf (outside: string, groups: string[]): Found {
-  // dots are separators ("Show.S02E05.1080p"), except in "12.5", a half episode that is no episode of ours
+  // dots separate words ("show.s02e05.1080p") except in "12.5", a half episode, no episode of ours
   const text = outside.replaceAll('_', ' ').replace(/\./g, (dot, at: number, whole: string) =>
     /\d/.test(whole[at - 1] ?? '') && /^\d(?!\d)/.test(whole.slice(at + 1)) ? dot : ' ')
 
@@ -84,23 +85,23 @@ function episodesOf (outside: string, groups: string[]): Found {
   const special = SPECIAL.exec(text)
   if (special) return { range: span(special[1]!), strong: true }
 
-  // "Show 05", or "Show 01 and 02", the end of a name is where the number usually is
   const end = TRAILING.exec(text)
   // a lone 4 digit number like 2026 is a year more often than an episode
   if (end && !YEAR.test(end[1]!)) return { range: span(end[1]!, end[2]), strong: true }
 
-  // a title that starts with a number ("07 Ghost", "009 Re:Cyborg") proves nothing, "01.ass" is a name of its own
+  // a title that starts with a number ("07 ghost") proves nothing, "01.ass" is just a name
   const start = /^\s*(\d{1,4})(?:v\d+)?(?=[\s-]|$)/.exec(text)
   if (start && !YEAR.test(start[1]!)) return { range: span(start[1]!), strong: false }
 
+  // nothing in the name itself, so brackets: [05], (part 2)
   for (const group of groups) {
-    const m = EPISODE_TAG.exec(group)
+    const m = EPISODE_TAG.exec(group) ?? PART_TAG.exec(group)
     if (m && !YEAR.test(m[1]!)) return { range: span(m[1]!), strong: true }
   }
   return { strong: false }
 }
 
-function seasonOf (groups: string[]): [number, number] | undefined {
+function seasonOf (groups: string[]): Range | undefined {
   for (const group of groups) {
     const m = SEASON_TAG.exec(group)
     if (m) return span(m[1]!)
@@ -113,12 +114,13 @@ function versionOf (text: string, groups: string[]): number {
   return Number(tagged?.[1] ?? m?.[1] ?? 1)
 }
 
+const clean = (text: string) => text.replace(/\s+/g, ' ').trim()
+
+// markers say where a file sits, they don't name a group or tell files apart
+const marker = (g: string) => EPISODE_TAG.test(g) || SEASON_TAG.test(g) || PART_TAG.test(g)
+
 function groupOf (groups: string[]): string | undefined {
-  for (const raw of groups) {
-    const group = raw.replace(/\s+/g, ' ').trim()
-    if (!group || group.length > 60 || TAG.test(group) || EPISODE_TAG.test(group) || SEASON_TAG.test(group)) continue
-    return group
-  }
+  return groups.map(clean).find(group => group && group.length <= 60 && !TAG.test(group) && !marker(group))
 }
 
 // junk inside zips: mac resource forks, dotfiles
@@ -127,7 +129,8 @@ const hidden = (path: string) => path.split('/').some(part => part === '__MACOSX
 export function describe (path: string): Described | undefined {
   if (path.length > 400 || hidden(path)) return undefined
   const base = path.slice(path.lastIndexOf('/') + 1)
-  const format = base.toLowerCase().endsWith('.txt') ? 'txt' : formatOf(base)
+  const ext = base.slice(base.lastIndexOf('.') + 1).toLowerCase()
+  const format = ext === 'txt' || ext === 'zip' ? ext : formatOf(base)
   if (!format) return undefined
 
   const groups: string[] = []
@@ -138,28 +141,31 @@ export function describe (path: string): Described | undefined {
   })
 
   const { range: episodes, strong } = episodesOf(outside, groups)
-  // some subbers save the subtitle as a txt, the credits txt has no episode and goes
-  if (format === 'txt' && (!episodes || CREDITS.test(base))) return undefined
+  // some subbers save subtitles as txt. credits, fonts zips and the like have no episode, so they go
+  if ((format === 'txt' || format === 'zip') && (!episodes || CREDITS.test(base))) return undefined
 
+  const group = groupOf(groups)
+  const noise = (g: string) => !g || g.length > 40 || clean(g) === group || /^v\d+$/i.test(g) || /^[\da-f]{8}$/i.test(g) || YEAR.test(g) || marker(g)
   return {
     path,
     format,
     episodes,
     strong,
-    title: outside.toLowerCase().replace(/\s+/g, ' ').trim(),
+    title: clean(outside.toLowerCase()),
     season: seasonOf(groups),
-    group: groupOf(groups),
-    tags: groups.filter(g => TAG.test(g) && !/^v\d+$/i.test(g) && !/^[\da-f]{8}$/i.test(g) && !YEAR.test(g)),
+    group,
+    tags: groups.filter(g => !noise(g)),
     version: versionOf(outside, groups)
   }
 }
 
-const RANK: Record<Format | 'txt', number> = { ass: 0, ssa: 1, srt: 2, vtt: 3, sub: 4, txt: 5 }
+const RANK: Record<Format | 'txt' | 'zip', number> = { ass: 0, ssa: 1, srt: 2, vtt: 3, sub: 4, txt: 5, zip: 6 }
 
-const within = (range: [number, number] | undefined, n: number) => !!range && n >= range[0] && n <= range[1]
+const within = (range: Range | undefined, n: number) => !!range && n >= range[0] && n <= range[1]
+const shift = (range: Range | undefined, by: number): Range | undefined => range && [range[0] - by, range[1] - by]
 
-// a zip whose names carry both numbers has one fixed gap between them (23 next to S2-01 is 22).
-// when nearly every file agrees on the gap a typo in one tag stands out, and the gap finds the file anyway
+// a zip whose names carry both numbers has one fixed gap (23 next to s2-01 is 22).
+// when nearly all files agree on it, a typo in one tag shows and the gap still finds the file
 function gapOf (all: Described[]): number | undefined {
   const gaps = all.filter(d => d.season && d.episodes).map(d => d.episodes![0] - d.season![0])
   if (gaps.length < 3) return undefined
@@ -171,33 +177,58 @@ function gapOf (all: Described[]): number | undefined {
 }
 
 export interface Picked extends Described {
-  // the zip has more than one group in it, so the file name is the best word on who made it
+  // more than one group in the zip, so the file name says best who made it
   mixed: boolean
 }
 
-// the files of one zip that are for this episode, the best copy of each (format, then version).
-// episodes is what hayase means first and then the series-wide number as a fallback.
-// lone: the page says this zip is for this one episode, so it doesn't have to be proven by the names
-export function pickFiles (paths: string[], episodes: Array<number | undefined>, lone: boolean): Picked[] {
+// the files of one zip for this episode, best copy of each (format, then version).
+// episodes: what hayase means, then the series-wide number as a fallback.
+// lone: the page says this zip is for this one episode, names needn't prove it.
+// span: the range the page lists for the zip
+export function pickFiles (paths: string[], episodes: Array<number | undefined>, lone: boolean, span?: Range): Picked[] {
   const all = paths.map(describe).filter((d): d is Described => !!d)
   const mixed = new Set(all.map(d => d.group).filter(Boolean)).size > 1
   const [episode, absolute] = episodes
 
-  // inside a season tagged name the tag is the episode, the other number is the series-wide one
+  // two numberings can share a name: the plain one and the season tag (or the gap from it). the page uses
+  // one of them, the one that puts the files inside its range
   const gap = gapOf(all)
-  const inSeason = (d: Described): [number, number] | undefined =>
-    gap !== undefined && d.episodes ? [d.episodes[0] - gap, d.episodes[1] - gap] : d.season ?? d.episodes
-  let found = episode === undefined ? [] : all.filter(d => within(inSeason(d), episode))
+  const main = (d: Described) => d.episodes
+  const season = (d: Described) => gap !== undefined && d.episodes ? shift(d.episodes, gap) : d.season
+  const fit = (pick: (d: Described) => Range | undefined) => span
+    ? all.filter(d => {
+      const range = pick(d)
+      return !!range && range[0] >= span[0] && range[1] <= span[1]
+    }).length
+    : 0
+
+  let found: Described[] = []
+  if (episode !== undefined) {
+    for (const pick of fit(main) > fit(season) ? [main, season] : [season, main]) {
+      found = all.filter(d => within(pick(d), episode))
+      if (found.length) break
+    }
+  }
   if (!found.length && absolute !== undefined) found = all.filter(d => within(d.episodes, absolute))
 
+  // the zip numbers its files its own way (39 to 50 for the twelve episodes of a part 2). if no file number
+  // falls in the page's range and there are as many numbers as episodes, the nth file is the nth episode
+  if (!found.length && span && episode !== undefined && episode >= span[0] && episode <= span[1]) {
+    const numbers = [...new Set(all.flatMap(d => d.episodes ? [d.episodes[0]] : []))].sort((a, b) => a - b)
+    const elsewhere = all.every(d => !d.episodes || d.episodes[1] < span[0] || d.episodes[0] > span[1])
+    if (elsewhere && numbers.length === span[1] - span[0] + 1) found = all.filter(d => d.episodes?.[0] === numbers[episode - span[0]])
+  }
+
   if (!found.length) {
-    // the page says which episode this zip is for, so only a name that clearly says another one can overrule it
-    if (lone) found = all.filter(d => !d.strong)
-    // a single file and no number is a special or a compilation, it covers whatever the page says
+    // the page says which episode this zip is for and it's the better judge: a lone file is it, whatever its
+    // number says. files that agree on one number are variants of that episode, files that don't are other episodes
+    const numbers = new Set(all.flatMap(d => d.episodes ? [d.episodes[0]] : []))
+    if (lone) found = all.length === 1 || numbers.size <= 1 ? all : all.filter(d => !d.strong)
+    // one file with no number is a special or a compilation, it covers whatever the page says
     else if (all.length === 1 && !all[0]!.episodes) found = all
   }
 
-  // same group, episode and name twice means another format or a v2, keep one
+  // same group, episode and name twice is another format or a v2, keep one
   const best = new Map<string, Described>()
   for (const d of found) {
     const key = `${d.group ?? ''}|${d.episodes?.join('-') ?? ''}|${d.tags.join(' ')}|${d.title}`

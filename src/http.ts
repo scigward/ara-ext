@@ -12,12 +12,12 @@ export class HttpError extends Error {
   }
 }
 
-// only ok responses come back, anything else is thrown so callers can't forget to check
+// only ok comes back, anything else throws so nobody forgets to check
 export async function request (fetchFn: typeof fetch, url: string, clock: Clock, headers?: Record<string, string>): Promise<Response> {
   const res = await clock.run(fetchFn(url, headers ? { headers } : undefined))
   if (res.ok) return res
 
-  // cloudflare check pages come as 403 or 503 with html, worth a clearer message
+  // cloudflare's check page is a 403/503 with html, say so
   const body = res.status === 403 || res.status === 503 ? await clock.run(res.text()).catch(() => '') : ''
   if (/just a moment|challenge-platform|cf-chl/i.test(body)) {
     throw new Error('mirai wants a cloudflare check, open the site once in a browser')

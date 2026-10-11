@@ -1,4 +1,4 @@
-// plain in-memory cache, lives as long as the extension's worker does
+// plain memory cache, dies with the worker
 
 export interface Cache<V> {
   get: (key: string) => V | undefined

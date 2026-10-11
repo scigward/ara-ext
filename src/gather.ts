@@ -3,8 +3,8 @@ export interface Gathered<T> {
   errors: unknown[]
 }
 
-// waits for the tasks, but once one has come back with something the rest only get `grace` more
-// milliseconds: a slow zip should not hold back the two that are ready. values keep the order of the tasks
+// waits for the tasks, but once one has something the rest get `grace` ms more.
+// a slow zip shouldn't hold back the ones that are ready. values keep the tasks' order
 export function gather<T> (tasks: Array<Promise<T[]>>, grace: number): Promise<Gathered<T>> {
   return new Promise(resolve => {
     const values: T[][] = []

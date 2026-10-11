@@ -26,6 +26,7 @@ function cache(ms, max2 = 64) {
 }
 
 // src/clock.ts
+var noClock = { left: () => Infinity, run: (work) => work };
 function startClock(ms) {
   const end = Date.now() + ms;
   return {
@@ -37,134 +38,6 @@ function startClock(ms) {
       });
     }
   };
-}
-
-// src/gather.ts
-function gather(tasks, grace) {
-  return new Promise((resolve) => {
-    const values = [];
-    const errors = [];
-    let open = tasks.length;
-    let timer;
-    const done = () => {
-      clearTimeout(timer);
-      resolve({ values: values.flat(), errors });
-    };
-    if (!open) done();
-    tasks.forEach((task, i2) => {
-      task.then((found) => {
-        values[i2] = found;
-        if (found.length) timer ?? (timer = setTimeout(done, grace));
-      }, (error) => {
-        errors.push(error);
-      }).finally(() => {
-        if (!--open) done();
-      });
-    });
-  });
-}
-
-// src/http.ts
-var ORIGIN = "https://miraianime.net";
-var HttpError = class extends Error {
-  constructor(status, url) {
-    super(`mirai answered ${status} for ${new URL(url).pathname}`);
-    __publicField(this, "status");
-    this.name = "HttpError";
-    this.status = status;
-  }
-};
-async function request(fetchFn, url, clock, headers) {
-  const res = await clock.run(fetchFn(url, headers ? { headers } : void 0));
-  if (res.ok) return res;
-  const body = res.status === 403 || res.status === 503 ? await clock.run(res.text()).catch(() => "") : "";
-  if (/just a moment|challenge-platform|cf-chl/i.test(body)) {
-    throw new Error("mirai wants a cloudflare check, open the site once in a browser");
-  }
-  throw new HttpError(res.status, url);
-}
-async function getText(fetchFn, url, clock) {
-  const res = await request(fetchFn, url, clock);
-  return await clock.run(res.text());
-}
-
-// src/label.ts
-function label(file, block, format, extra = "") {
-  const credited = block.translators.join(" & ");
-  const who = (file.mixed ? file.group ?? credited : credited || file.group) || "Mirai";
-  const release = block.release ? ` (${block.release})` : "";
-  const name = `Arabic - ${who.slice(0, 50)}${release}${extra ? ` ${extra}` : ""}`.replace(/[\\/:*?"<>|\p{Cc}]/gu, " ").replace(/\s+/g, " ").trim();
-  return `${name}.${format}`;
-}
-function unique(names) {
-  const seen = /* @__PURE__ */ new Map();
-  return names.map((name) => {
-    const n = (seen.get(name) ?? 0) + 1;
-    seen.set(name, n);
-    const dot = name.lastIndexOf(".");
-    return n === 1 ? name : `${name.slice(0, dot)} ${n}${name.slice(dot)}`;
-  });
-}
-
-// src/listing.ts
-var NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-function decodeEntities(text) {
-  return text.replace(/&(?:#(\d+)|#x([\da-f]+)|(\w+));/gi, (all, dec, hex, name) => {
-    if (name) return NAMED[name.toLowerCase()] ?? all;
-    const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
-    return code > 0 && code <= 1114111 ? String.fromCodePoint(code) : all;
-  });
-}
-var plain = (html) => decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-var asciiDigits = (text) => text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
-var UNITS = { \u0643\u064A\u0644\u0648: 1024, \u0645\u064A\u062C\u0627: 1024 ** 2, \u062C\u064A\u062C\u0627: 1024 ** 3 };
-function parseSize(text) {
-  const m = /^([\d.]+)\s*(كيلو|ميجا|جيجا)?\s*بايت$/.exec(asciiDigits(text).replace(/\s+/g, " ").trim());
-  return m && Number.isFinite(Number(m[1])) ? Math.round(Number(m[1]) * (UNITS[m[2] ?? ""] ?? 1)) : void 0;
-}
-function parseEpisodes(cell) {
-  const badges = [...cell.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => asciiDigits(m[1]).trim());
-  if (!badges.length || !badges.every((b) => /^\d{1,5}$/.test(b))) return [];
-  const numbers = badges.map(Number);
-  if (cell.includes("\u0625\u0644\u0649") && numbers.length === 2) return [[Math.min(...numbers), Math.max(...numbers)]];
-  return numbers.map((n) => [n, n]);
-}
-function zipLink(hrefs) {
-  for (const href of hrefs) {
-    try {
-      const url = new URL(decodeEntities(href), ORIGIN);
-      if (!/^(www\.)?miraianime\.net$/.test(url.hostname)) continue;
-      if (!url.pathname.startsWith("/wp-content/uploads/") || !/\.zip$/i.test(url.pathname)) continue;
-      return `${ORIGIN}${url.pathname}${url.search}`;
-    } catch {
-    }
-  }
-}
-var BLOCK = /<div class="entry fansub-details">([\s\S]*?)<\/table>\s*<\/div>\s*<div class="links-file">([\s\S]*?)<\/div>/g;
-var ROW = /<tr>\s*<th>([\s\S]*?)<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/g;
-function parseListing(html) {
-  const blocks = [];
-  for (const [, info, links] of html.matchAll(BLOCK)) {
-    const block = { episodes: [], release: "", translators: [], zip: "" };
-    let missing = false;
-    let size;
-    for (const [, th, td2] of info.matchAll(ROW)) {
-      const label2 = plain(th);
-      if (label2.includes("\u0627\u0644\u062D\u0644\u0642\u0627\u062A")) block.episodes = parseEpisodes(td2);
-      else if (label2.includes("\u0635\u062F\u0627\u0631")) block.release = [...td2.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => plain(m[1])).filter(Boolean).join("/");
-      else if (label2.includes("\u0627\u0644\u0645\u062A\u0631\u062C\u0645")) block.translators = [...td2.matchAll(/<a[^>]*>([^<]*)<\/a>/g)].map((m) => plain(m[1])).filter(Boolean);
-      else if (label2.includes("\u062D\u062C\u0645")) {
-        missing = plain(td2).includes("\u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
-        size = parseSize(plain(td2));
-      }
-    }
-    const zip = zipLink([...links.matchAll(/href="([^"]*)"/g)].map((m) => m[1]));
-    if (zip && !missing) blocks.push({ ...block, zip, size });
-  }
-  return blocks;
-}
-function covers(block, episode) {
-  return block.episodes.some(([from, to]) => episode >= from && episode <= to);
 }
 
 // src/subtitle.ts
@@ -209,17 +82,18 @@ var YEAR = /^(?:19|20)\d\d$/;
 var TAG = /^(?:v\d+|\d{3,4}[pi]|\d{3,4}x\d{3,4}|[\da-f]{8}|bd(?:rip)?|blu-?ray|web(?:[ -]?(?:dl|rip))?|tv(?:rip)?|dvd(?:rip)?|hdtv|raw|aac|ac3|flac|x26[45]|h\.?26[45]|hevc|avc|\d+-?bits?|dual[ -]?audio|multi|batch|complete|(?:ar|ara|arabic)(?:[ -]?subs?)?|subs?|ass|srt|vtt|ssa|(?:19|20)\d\d)$/i;
 var SEASON_TAG = /^(?:S|P|Part\s*|Season\s*|Cour\s*)\d{1,2}\s*[-–]?\s*(?:E|EP)?\s*(\d{1,3})(?:\s+(?:END|FINAL|FIN))?$/i;
 var EPISODE_TAG = /^(?:E(?:P)?\s*)?(\d{1,4})(?:v\d+)?$/i;
+var PART_TAG = /^Part\s*(\d{1,2})$/i;
 var CREDITS = /^(?:www\.)?mirai/i;
-var asciiDigits2 = (text) => text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+var asciiDigits = (text) => text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
 function span(a, b) {
   const from = Number(a);
   const to = b === void 0 ? from : Number(b);
   return to >= from && to - from < MAX_SPAN ? [from, to] : void 0;
 }
 var OUTSIDE = [
-  // S02E05, S02E05-E06
+  // s02e05, s02e05-e06
   /\bS\d{1,2}\s*E(\d{1,4})(?:v\d+)?(?:\s*[-~&+]\s*E?(\d{1,4}))?(?![\d.])/i,
-  // E05, EP05, Episode 05, EP05-06
+  // e05, ep05, episode 05, ep05-06
   /\bE(?:P|pisode)?\s*(\d{1,4})(?:v\d+)?(?:\s*[-~&+]\s*E?(?:P|pisode)?\s*(\d{1,4}))?(?![\d.]|\s*p\b)/i,
   /(?:الحلقة|حلقة)\s*(\d{1,4})(?:\s*[-~&+]\s*(\d{1,4}))?/,
   /第\s*(\d{1,4})\s*話/
@@ -245,7 +119,7 @@ function episodesOf(outside, groups) {
   const start = /^\s*(\d{1,4})(?:v\d+)?(?=[\s-]|$)/.exec(text);
   if (start && !YEAR.test(start[1])) return { range: span(start[1]), strong: false };
   for (const group of groups) {
-    const m = EPISODE_TAG.exec(group);
+    const m = EPISODE_TAG.exec(group) ?? PART_TAG.exec(group);
     if (m && !YEAR.test(m[1])) return { range: span(m[1]), strong: true };
   }
   return { strong: false };
@@ -261,41 +135,43 @@ function versionOf(text, groups) {
   const tagged = groups.map((g) => /^v(\d)$/i.exec(g)).find(Boolean);
   return Number(tagged?.[1] ?? m?.[1] ?? 1);
 }
+var clean = (text) => text.replace(/\s+/g, " ").trim();
+var marker = (g) => EPISODE_TAG.test(g) || SEASON_TAG.test(g) || PART_TAG.test(g);
 function groupOf(groups) {
-  for (const raw of groups) {
-    const group = raw.replace(/\s+/g, " ").trim();
-    if (!group || group.length > 60 || TAG.test(group) || EPISODE_TAG.test(group) || SEASON_TAG.test(group)) continue;
-    return group;
-  }
+  return groups.map(clean).find((group) => group && group.length <= 60 && !TAG.test(group) && !marker(group));
 }
 var hidden = (path) => path.split("/").some((part) => part === "__MACOSX" || part.startsWith("."));
 function describe(path) {
   if (path.length > 400 || hidden(path)) return void 0;
   const base = path.slice(path.lastIndexOf("/") + 1);
-  const format = base.toLowerCase().endsWith(".txt") ? "txt" : formatOf(base);
+  const ext = base.slice(base.lastIndexOf(".") + 1).toLowerCase();
+  const format = ext === "txt" || ext === "zip" ? ext : formatOf(base);
   if (!format) return void 0;
   const groups = [];
-  const stem = asciiDigits2(base.slice(0, base.lastIndexOf(".")));
+  const stem = asciiDigits(base.slice(0, base.lastIndexOf(".")));
   const outside = stem.replace(/[[(【]([^\])】]*)[\])】]/g, (_, inner) => {
     groups.push(inner.trim());
     return " ";
   });
   const { range: episodes, strong } = episodesOf(outside, groups);
-  if (format === "txt" && (!episodes || CREDITS.test(base))) return void 0;
+  if ((format === "txt" || format === "zip") && (!episodes || CREDITS.test(base))) return void 0;
+  const group = groupOf(groups);
+  const noise = (g) => !g || g.length > 40 || clean(g) === group || /^v\d+$/i.test(g) || /^[\da-f]{8}$/i.test(g) || YEAR.test(g) || marker(g);
   return {
     path,
     format,
     episodes,
     strong,
-    title: outside.toLowerCase().replace(/\s+/g, " ").trim(),
+    title: clean(outside.toLowerCase()),
     season: seasonOf(groups),
-    group: groupOf(groups),
-    tags: groups.filter((g) => TAG.test(g) && !/^v\d+$/i.test(g) && !/^[\da-f]{8}$/i.test(g) && !YEAR.test(g)),
+    group,
+    tags: groups.filter((g) => !noise(g)),
     version: versionOf(outside, groups)
   };
 }
-var RANK = { ass: 0, ssa: 1, srt: 2, vtt: 3, sub: 4, txt: 5 };
+var RANK = { ass: 0, ssa: 1, srt: 2, vtt: 3, sub: 4, txt: 5, zip: 6 };
 var within = (range, n) => !!range && n >= range[0] && n <= range[1];
+var shift = (range, by) => range && [range[0] - by, range[1] - by];
 function gapOf(all) {
   const gaps = all.filter((d) => d.season && d.episodes).map((d) => d.episodes[0] - d.season[0]);
   if (gaps.length < 3) return void 0;
@@ -304,16 +180,33 @@ function gapOf(all) {
   const [gap, count] = [...counts].sort((a, b) => b[1] - a[1])[0];
   return count / gaps.length >= 0.75 ? gap : void 0;
 }
-function pickFiles(paths, episodes, lone) {
+function pickFiles(paths, episodes, lone, span2) {
   const all = paths.map(describe).filter((d) => !!d);
   const mixed = new Set(all.map((d) => d.group).filter(Boolean)).size > 1;
   const [episode, absolute] = episodes;
   const gap = gapOf(all);
-  const inSeason = (d) => gap !== void 0 && d.episodes ? [d.episodes[0] - gap, d.episodes[1] - gap] : d.season ?? d.episodes;
-  let found = episode === void 0 ? [] : all.filter((d) => within(inSeason(d), episode));
+  const main = (d) => d.episodes;
+  const season = (d) => gap !== void 0 && d.episodes ? shift(d.episodes, gap) : d.season;
+  const fit = (pick) => span2 ? all.filter((d) => {
+    const range = pick(d);
+    return !!range && range[0] >= span2[0] && range[1] <= span2[1];
+  }).length : 0;
+  let found = [];
+  if (episode !== void 0) {
+    for (const pick of fit(main) > fit(season) ? [main, season] : [season, main]) {
+      found = all.filter((d) => within(pick(d), episode));
+      if (found.length) break;
+    }
+  }
   if (!found.length && absolute !== void 0) found = all.filter((d) => within(d.episodes, absolute));
+  if (!found.length && span2 && episode !== void 0 && episode >= span2[0] && episode <= span2[1]) {
+    const numbers = [...new Set(all.flatMap((d) => d.episodes ? [d.episodes[0]] : []))].sort((a, b) => a - b);
+    const elsewhere = all.every((d) => !d.episodes || d.episodes[1] < span2[0] || d.episodes[0] > span2[1]);
+    if (elsewhere && numbers.length === span2[1] - span2[0] + 1) found = all.filter((d) => d.episodes?.[0] === numbers[episode - span2[0]]);
+  }
   if (!found.length) {
-    if (lone) found = all.filter((d) => !d.strong);
+    const numbers = new Set(all.flatMap((d) => d.episodes ? [d.episodes[0]] : []));
+    if (lone) found = all.length === 1 || numbers.size <= 1 ? all : all.filter((d) => !d.strong);
     else if (all.length === 1 && !all[0].episodes) found = all;
   }
   const best = /* @__PURE__ */ new Map();
@@ -323,119 +216,6 @@ function pickFiles(paths, episodes, lone) {
     if (!had || d.version > had.version || d.version === had.version && RANK[d.format] < RANK[had.format]) best.set(key, d);
   }
   return [...best.values()].map((d) => ({ ...d, mixed }));
-}
-
-// src/plan.ts
-function maxFiles(options) {
-  return Math.min(8, Math.max(1, Math.round(Number(options.maxFiles) || 3)));
-}
-function plan(blocks, query, options) {
-  const absolute = query.absoluteEpisodeNumber;
-  const episodes = [query.episode, typeof absolute === "number" && absolute >= 0 && absolute !== query.episode ? absolute : void 0];
-  const lone = (block) => block.episodes.length === 1 && block.episodes[0][0] === block.episodes[0][1];
-  let steps = [];
-  for (const episode of episodes) {
-    if (episode === void 0) continue;
-    steps = blocks.filter((block) => covers(block, episode)).map((block) => ({ block, episodes, lone: lone(block) }));
-    if (steps.length) break;
-  }
-  if (!steps.length && (query.episodeCount === 1 || query.media?.format === "MOVIE")) {
-    steps = blocks.filter((block) => !block.episodes.length).map((block) => ({ block, episodes, lone: true }));
-  }
-  const prefer = String(options.translators ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const rank = ({ block }) => {
-    const at = prefer.findIndex((name) => block.translators.some((t) => t.toLowerCase().includes(name)));
-    return at < 0 ? prefer.length : at;
-  };
-  return steps.sort((a, b) => rank(a) - rank(b)).slice(0, maxFiles(options) + 2);
-}
-
-// src/resolve.ts
-var DAY = 24 * 60 * 60 * 1e3;
-var slugCache = () => cache(DAY, 256);
-var LINK = /href="https:\/\/miraianime\.net\/anime\/([^"/]+)\/"/g;
-var idOf = (value) => Number(value) || void 0;
-var squash = (title) => title.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
-async function byMal(fetchFn, mal, clock) {
-  const html = await getText(fetchFn, `${ORIGIN}/anime/?my_anime_list_ID=${mal}&submit=`, clock);
-  return [...new Set([...html.matchAll(LINK)].map((m) => m[1]))];
-}
-async function rest(fetchFn, params, clock) {
-  const data = JSON.parse(await getText(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock));
-  return Array.isArray(data) ? data : [];
-}
-var search = (fetchFn, term, clock) => rest(fetchFn, `search=${encodeURIComponent(term)}&per_page=10`, clock);
-function searchTerms(titles) {
-  const seen = /* @__PURE__ */ new Set();
-  const terms = [];
-  for (const title of titles) {
-    const key = squash(title);
-    if (!key || seen.has(key) || /[^\p{Script=Latin}\p{N}\p{P}\p{S}\s]/u.test(title)) continue;
-    seen.add(key);
-    terms.push(title);
-  }
-  return terms.slice(0, 4);
-}
-function byIds(candidates, query, mal) {
-  return candidates.find((c) => {
-    const links = c.acf?.external_links;
-    return idOf(links?.anilist_id) === query.anilistId || mal !== void 0 && idOf(links?.my_anime_list_id) === mal || !!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid;
-  })?.slug;
-}
-function byTitle(candidates, query) {
-  const wanted = new Set(query.titles.map(squash));
-  const same = candidates.filter((c) => wanted.has(squash(decodeEntities(c.title?.rendered ?? ""))));
-  return same.length === 1 ? same[0].slug : void 0;
-}
-function firstFound(lookups) {
-  return new Promise((resolve, reject) => {
-    let open = lookups.length;
-    const failures = [];
-    if (!open) resolve(void 0);
-    lookups.forEach((lookup, i2) => {
-      lookup.then((slug) => {
-        if (slug !== void 0) resolve(slug);
-      }, (error) => {
-        failures[i2] = error ?? new Error("lookup failed");
-      }).finally(() => {
-        if (--open) return;
-        const failure = failures.find(Boolean);
-        if (!failure) resolve(void 0);
-        else reject(failure instanceof Error ? failure : new Error(String(failure)));
-      });
-    });
-  });
-}
-async function findSlug(query, clock, slugs) {
-  const key = String(query.anilistId);
-  const known = slugs.get(key);
-  if (known !== void 0) return known ?? void 0;
-  const { fetch: fetchFn } = query;
-  const mal = idOf(query.malId) ?? idOf(query.media?.idMal);
-  const terms = searchTerms(query.titles);
-  const lookups = [];
-  if (mal) {
-    lookups.push(byMal(fetchFn, mal, clock).then(async (hits) => {
-      if (hits.length < 2) return hits[0];
-      const rows = await Promise.all(hits.map((slug) => rest(fetchFn, `slug=${encodeURIComponent(slug)}`, clock)));
-      return byIds(rows.flat(), query, mal) ?? hits[0];
-    }));
-  }
-  let first = [];
-  if (terms[0]) {
-    lookups.push(search(fetchFn, terms[0], clock).then((rows) => {
-      first = rows;
-      return byIds(rows, query, mal);
-    }));
-  }
-  let found = await firstFound(lookups);
-  found ?? (found = byTitle(first, query));
-  for (const term of terms.slice(1)) {
-    if (found) break;
-    const rows = await search(fetchFn, term, clock);
-    found = byIds(rows, query, mal) ?? byTitle(rows, query);
-  }
-  return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1e3) ?? void 0;
 }
 
 // node_modules/fflate/esm/browser.js
@@ -776,11 +556,11 @@ var inflt = function(dat, st, buf, dict) {
           cbuf(bt + 131072);
         var end = bt + add;
         if (bt < dt) {
-          var shift = dl - dt, dend = Math.min(dt, end);
-          if (shift + bt < 0)
+          var shift2 = dl - dt, dend = Math.min(dt, end);
+          if (shift2 + bt < 0)
             err(3);
           for (; bt < dend; ++bt)
-            buf[bt] = dict[shift + bt];
+            buf[bt] = dict[shift2 + bt];
         }
         for (; bt < end; ++bt)
           buf[bt] = buf[bt - dt];
@@ -804,10 +584,41 @@ try {
 } catch (e) {
 }
 
+// src/http.ts
+var ORIGIN = "https://miraianime.net";
+var HttpError = class extends Error {
+  constructor(status, url) {
+    super(`mirai answered ${status} for ${new URL(url).pathname}`);
+    __publicField(this, "status");
+    this.name = "HttpError";
+    this.status = status;
+  }
+};
+async function request(fetchFn, url, clock, headers) {
+  const res = await clock.run(fetchFn(url, headers ? { headers } : void 0));
+  if (res.ok) return res;
+  const body = res.status === 403 || res.status === 503 ? await clock.run(res.text()).catch(() => "") : "";
+  if (/just a moment|challenge-platform|cf-chl/i.test(body)) {
+    throw new Error("mirai wants a cloudflare check, open the site once in a browser");
+  }
+  throw new HttpError(res.status, url);
+}
+async function getText(fetchFn, url, clock) {
+  const res = await request(fetchFn, url, clock);
+  return await clock.run(res.text());
+}
+
 // src/zip.ts
+var SkippedEntry = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "SkippedEntry";
+  }
+};
 var TAIL = 64 * 1024;
 var SLACK = 512;
-var MAX_ENTRY = 16 * 1024 * 1024;
+var MAX_SIZE = 12 * 1024 * 1024;
+var MAX_PACKED = 4 * 1024 * 1024;
 var MAX_DIRECTORY = 4 * 1024 * 1024;
 var TABLE = new Uint32Array(256).map((_, n) => {
   let c = n;
@@ -861,10 +672,7 @@ function parseDirectory(dir, count) {
   }
   return entries;
 }
-async function openZip(fetchFn, url, clock, tailSize = TAIL) {
-  const res = await request(fetchFn, url, clock, { Range: `bytes=-${tailSize}` });
-  const tail = new Uint8Array(await clock.run(res.arrayBuffer()));
-  const whole = res.status !== 206;
+async function build(tail, whole, outside, clock) {
   const end = findEnd(tail);
   const count = u162(tail, end + 10);
   const dirSize = u32(tail, end + 12);
@@ -872,18 +680,13 @@ async function openZip(fetchFn, url, clock, tailSize = TAIL) {
   if (count === 65535 || dirSize === 4294967295 || dirOffset === 4294967295) throw new Error("zip64 files are not supported");
   if (dirSize > MAX_DIRECTORY) throw new Error("that zip has a silly amount of files");
   const base = whole ? 0 : dirOffset + dirSize - end;
-  const grab = async (start, length, clock2) => {
-    if (start >= base) return tail.subarray(start - base, start - base + length);
-    const got = await request(fetchFn, url, clock2, { Range: `bytes=${start}-${start + length - 1}` });
-    const body = new Uint8Array(await clock2.run(got.arrayBuffer()));
-    return got.status === 206 ? body : body.subarray(start, start + length);
-  };
+  const grab = (start, length, clock2) => start >= base ? Promise.resolve(tail.subarray(start - base, start - base + length)) : outside(start, length, clock2);
   const entries = parseDirectory(await grab(dirOffset, dirSize, clock), count);
   return {
     entries,
     async read(entry, clock2) {
-      if (entry.flags & 1) throw new Error(`${entry.name} is encrypted`);
-      if (entry.size > MAX_ENTRY || entry.packed > MAX_ENTRY) throw new Error(`${entry.name} is too big`);
+      if (entry.flags & 1) throw new SkippedEntry(`${entry.name} is encrypted`);
+      if (entry.size > MAX_SIZE || entry.packed > MAX_PACKED) throw new SkippedEntry(`${entry.name} is too big`);
       let buf = await grab(entry.offset, 30 + entry.nameLength + SLACK + entry.packed, clock2);
       if (buf.length < 30 || u32(buf, 0) !== 67324752) throw new Error(`${entry.name} has a broken header`);
       const dataStart = 30 + u162(buf, 26) + u162(buf, 28);
@@ -893,11 +696,256 @@ async function openZip(fetchFn, url, clock, tailSize = TAIL) {
       let data;
       if (entry.method === 0) data = packed;
       else if (entry.method === 8) data = inflateSync(packed, { out: new Uint8Array(entry.size) });
-      else throw new Error(`${entry.name} uses a zip method we can't open`);
+      else throw new SkippedEntry(`${entry.name} uses a zip method we can't open`);
       if (data.length !== entry.size || crc32(data) !== entry.crc) throw new Error(`${entry.name} is damaged`);
       return data;
     }
   };
+}
+async function openZip(fetchFn, url, clock, tailSize = TAIL) {
+  const res = await request(fetchFn, url, clock, { Range: `bytes=-${tailSize}` });
+  const tail = new Uint8Array(await clock.run(res.arrayBuffer()));
+  return await build(tail, res.status !== 206, async (start, length, clock2) => {
+    const got = await request(fetchFn, url, clock2, { Range: `bytes=${start}-${start + length - 1}` });
+    const body = new Uint8Array(await clock2.run(got.arrayBuffer()));
+    return got.status === 206 ? body : body.subarray(start, start + length);
+  }, clock);
+}
+function zipFromBytes(bytes) {
+  return build(bytes, true, () => Promise.reject(new Error("that zip is cut short")), noClock);
+}
+
+// src/files.ts
+var entryOf = (zip, path) => zip.entries.find((e) => e.name === path);
+function fromBytes(bytes, file) {
+  const text = decodeText(bytes);
+  const format = detectFormat(text);
+  return format ? [{ file, url: toDataUrl(text, format), format }] : [];
+}
+async function readPicked(zip, file, clock) {
+  const bytes = await zip.read(entryOf(zip, file.path), clock);
+  if (file.format !== "zip") return fromBytes(bytes, file);
+  const inner = await zipFromBytes(bytes);
+  const picks = pickFiles(inner.entries.map((e) => e.name), [file.episodes?.[0]], true).filter((p) => p.format !== "zip");
+  const reads = await Promise.all(picks.map(async (p) => fromBytes(await inner.read(entryOf(inner, p.path), noClock), file)));
+  return reads.flat();
+}
+
+// src/gather.ts
+function gather(tasks, grace) {
+  return new Promise((resolve) => {
+    const values = [];
+    const errors = [];
+    let open = tasks.length;
+    let timer;
+    const done = () => {
+      clearTimeout(timer);
+      resolve({ values: values.flat(), errors });
+    };
+    if (!open) done();
+    tasks.forEach((task, i2) => {
+      task.then((found) => {
+        values[i2] = found;
+        if (found.length) timer ?? (timer = setTimeout(done, grace));
+      }, (error) => {
+        errors.push(error);
+      }).finally(() => {
+        if (!--open) done();
+      });
+    });
+  });
+}
+
+// src/label.ts
+function label(file, block, format, extra = "") {
+  const credited = block.translators.join(" & ");
+  const who = (file.mixed ? file.group ?? credited : credited || file.group) || "Mirai";
+  const release = block.release ? ` (${block.release})` : "";
+  const name = `Arabic - ${who.slice(0, 50)}${release}${extra ? ` ${extra}` : ""}`.replace(/[\\/:*?"<>|\p{Cc}]/gu, " ").replace(/\s+/g, " ").trim();
+  return `${name}.${format}`;
+}
+function unique(names) {
+  const seen = /* @__PURE__ */ new Map();
+  return names.map((name) => {
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    const dot = name.lastIndexOf(".");
+    return n === 1 ? name : `${name.slice(0, dot)} ${n}${name.slice(dot)}`;
+  });
+}
+
+// src/listing.ts
+var NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+function decodeEntities(text) {
+  return text.replace(/&(?:#(\d+)|#x([\da-f]+)|(\w+));/gi, (all, dec, hex, name) => {
+    if (name) return NAMED[name.toLowerCase()] ?? all;
+    const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
+    return code > 0 && code <= 1114111 ? String.fromCodePoint(code) : all;
+  });
+}
+var plain = (html) => decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+var asciiDigits2 = (text) => text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+var UNITS = { \u0643\u064A\u0644\u0648: 1024, \u0645\u064A\u062C\u0627: 1024 ** 2, \u062C\u064A\u062C\u0627: 1024 ** 3 };
+function parseSize(text) {
+  const m = /^([\d.]+)\s*(كيلو|ميجا|جيجا)?\s*بايت$/.exec(asciiDigits2(text).replace(/\s+/g, " ").trim());
+  return m && Number.isFinite(Number(m[1])) ? Math.round(Number(m[1]) * (UNITS[m[2] ?? ""] ?? 1)) : void 0;
+}
+function parseEpisodes(cell) {
+  const badges = [...cell.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => asciiDigits2(m[1]).trim());
+  if (!badges.length || !badges.every((b) => /^\d{1,5}$/.test(b))) return [];
+  const numbers = badges.map(Number);
+  if (cell.includes("\u0625\u0644\u0649") && numbers.length === 2) return [[Math.min(...numbers), Math.max(...numbers)]];
+  return numbers.map((n) => [n, n]);
+}
+function zipLink(hrefs) {
+  for (const href of hrefs) {
+    try {
+      const url = new URL(decodeEntities(href), ORIGIN);
+      if (!/^(www\.)?miraianime\.net$/.test(url.hostname)) continue;
+      if (!url.pathname.startsWith("/wp-content/uploads/") || !/\.zip$/i.test(url.pathname)) continue;
+      return `${ORIGIN}${url.pathname}${url.search}`;
+    } catch {
+    }
+  }
+}
+var BLOCK = /<div class="entry fansub-details">([\s\S]*?)<\/table>\s*<\/div>\s*<div class="links-file">([\s\S]*?)<\/div>/g;
+var ROW = /<tr>\s*<th>([\s\S]*?)<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/g;
+function parseListing(html) {
+  const blocks = [];
+  for (const [, info, links] of html.matchAll(BLOCK)) {
+    const block = { episodes: [], release: "", translators: [], zip: "" };
+    let missing = false;
+    let size;
+    for (const [, th, td2] of info.matchAll(ROW)) {
+      const label2 = plain(th);
+      if (label2.includes("\u0627\u0644\u062D\u0644\u0642\u0627\u062A")) block.episodes = parseEpisodes(td2);
+      else if (label2.includes("\u0635\u062F\u0627\u0631")) block.release = [...td2.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => plain(m[1])).filter(Boolean).join("/");
+      else if (label2.includes("\u0627\u0644\u0645\u062A\u0631\u062C\u0645")) block.translators = [...td2.matchAll(/<a[^>]*>([^<]*)<\/a>/g)].map((m) => plain(m[1])).filter(Boolean);
+      else if (label2.includes("\u062D\u062C\u0645")) {
+        missing = plain(td2).includes("\u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
+        size = parseSize(plain(td2));
+      }
+    }
+    const zip = zipLink([...links.matchAll(/href="([^"]*)"/g)].map((m) => m[1]));
+    if (zip && !missing) blocks.push({ ...block, zip, size });
+  }
+  return blocks;
+}
+function covers(block, episode) {
+  return block.episodes.some(([from, to]) => episode >= from && episode <= to);
+}
+
+// src/plan.ts
+function maxFiles(options) {
+  return Math.min(8, Math.max(1, Math.round(Number(options.maxFiles) || 3)));
+}
+function plan(blocks, query, options) {
+  const absolute = query.absoluteEpisodeNumber;
+  const episodes = [query.episode, typeof absolute === "number" && absolute >= 0 && absolute !== query.episode ? absolute : void 0];
+  const lone = (block) => block.episodes.length === 1 && block.episodes[0][0] === block.episodes[0][1];
+  let steps = [];
+  for (const episode of episodes) {
+    if (episode === void 0) continue;
+    steps = blocks.filter((block) => covers(block, episode)).map((block) => ({ block, episodes, lone: lone(block), span: block.episodes.length === 1 ? block.episodes[0] : void 0 }));
+    if (steps.length) break;
+  }
+  if (!steps.length && (query.episodeCount === 1 || query.media?.format === "MOVIE")) {
+    steps = blocks.filter((block) => !block.episodes.length).map((block) => ({ block, episodes, lone: true }));
+  }
+  const prefer = String(options.translators ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const rank = ({ block }) => {
+    const at = prefer.findIndex((name) => block.translators.some((t) => t.toLowerCase().includes(name)));
+    return at < 0 ? prefer.length : at;
+  };
+  return steps.sort((a, b) => rank(a) - rank(b)).slice(0, maxFiles(options) + 2);
+}
+
+// src/resolve.ts
+var DAY = 24 * 60 * 60 * 1e3;
+var slugCache = () => cache(DAY, 256);
+var LINK = /href="https:\/\/miraianime\.net\/anime\/([^"/]+)\/"/g;
+var idOf = (value) => Number(value) || void 0;
+var squash = (title) => title.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
+async function byMal(fetchFn, mal, clock) {
+  const html = await getText(fetchFn, `${ORIGIN}/anime/?my_anime_list_ID=${mal}&submit=`, clock);
+  return [...new Set([...html.matchAll(LINK)].map((m) => m[1]))];
+}
+async function rest(fetchFn, params, clock) {
+  const data = JSON.parse(await getText(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock));
+  return Array.isArray(data) ? data : [];
+}
+var search = (fetchFn, term, clock) => rest(fetchFn, `search=${encodeURIComponent(term)}&per_page=10`, clock);
+function searchTerms(titles) {
+  const seen = /* @__PURE__ */ new Set();
+  const terms = [];
+  for (const title of titles) {
+    const key = squash(title);
+    if (!key || seen.has(key) || /[^\p{Script=Latin}\p{N}\p{P}\p{S}\s]/u.test(title)) continue;
+    seen.add(key);
+    terms.push(title);
+  }
+  return terms.slice(0, 4);
+}
+function byIds(candidates, query, mal) {
+  return candidates.find((c) => {
+    const links = c.acf?.external_links;
+    return idOf(links?.anilist_id) === query.anilistId || mal !== void 0 && idOf(links?.my_anime_list_id) === mal || !!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid;
+  })?.slug;
+}
+function byTitle(candidates, query) {
+  const wanted = new Set(query.titles.map(squash));
+  const same = candidates.filter((c) => wanted.has(squash(decodeEntities(c.title?.rendered ?? ""))));
+  return same.length === 1 ? same[0].slug : void 0;
+}
+function firstFound(lookups) {
+  return new Promise((resolve, reject) => {
+    let open = lookups.length;
+    const failures = [];
+    if (!open) resolve(void 0);
+    lookups.forEach((lookup, i2) => {
+      lookup.then((slug) => {
+        if (slug !== void 0) resolve(slug);
+      }, (error) => {
+        failures[i2] = error ?? new Error("lookup failed");
+      }).finally(() => {
+        if (--open) return;
+        const failure = failures.find(Boolean);
+        if (!failure) resolve(void 0);
+        else reject(failure instanceof Error ? failure : new Error(String(failure)));
+      });
+    });
+  });
+}
+async function findSlug(query, clock, slugs) {
+  const key = String(query.anilistId);
+  const known = slugs.get(key);
+  if (known !== void 0) return known ?? void 0;
+  const { fetch: fetchFn } = query;
+  const mal = idOf(query.malId) ?? idOf(query.media?.idMal);
+  const terms = searchTerms(query.titles);
+  const lookups = [];
+  if (mal) {
+    lookups.push(byMal(fetchFn, mal, clock).then(async (hits) => {
+      if (hits.length < 2) return hits[0];
+      const rows = await Promise.all(hits.map((slug) => rest(fetchFn, `slug=${encodeURIComponent(slug)}`, clock)));
+      return byIds(rows.flat(), query, mal) ?? hits[0];
+    }));
+  }
+  let first = [];
+  if (terms[0]) {
+    lookups.push(search(fetchFn, terms[0], clock).then((rows) => {
+      first = rows;
+      return byIds(rows, query, mal);
+    }));
+  }
+  let found = await firstFound(lookups);
+  found ?? (found = byTitle(first, query));
+  for (const term of terms.slice(1)) {
+    if (found) break;
+    const rows = await search(fetchFn, term, clock);
+    found = byIds(rows, query, mal) ?? byTitle(rows, query);
+  }
+  return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1e3) ?? void 0;
 }
 
 // src/extension.ts
@@ -908,9 +956,11 @@ var gone = (error) => error instanceof HttpError && (error.status === 404 || err
 var urlSafe = (slug) => /%[\da-f]{2}/i.test(slug) ? slug : encodeURIComponent(slug);
 function named(files, block) {
   const plain2 = files.map((f) => label(f.file, block, f.format));
-  const twice = new Set(plain2.filter((name, i2) => plain2.indexOf(name) !== i2));
-  const release = block.release.toLowerCase().split("/");
-  const names = files.map((f, i2) => twice.has(plain2[i2]) ? label(f.file, block, f.format, f.file.tags.filter((t) => !release.includes(t.toLowerCase())).join(" ")) : plain2[i2]);
+  const names = files.map((f, i2) => {
+    const alike = files.filter((_, j) => plain2[j] === plain2[i2]);
+    if (alike.length < 2) return plain2[i2];
+    return label(f.file, block, f.format, f.file.tags.filter((tag) => alike.some((other) => !other.file.tags.includes(tag))).join(" "));
+  });
   return unique(names).map((language, i2) => ({ url: files[i2].url, language }));
 }
 function createExtension(budget = 8e3, grace = 1500) {
@@ -928,21 +978,16 @@ function createExtension(budget = 8e3, grace = 1500) {
       throw error;
     }
   }
-  async function readFile(zip, path, clock) {
-    const text = decodeText(await zip.read(zip.entries.find((e) => e.name === path), clock));
-    const format = detectFormat(text);
-    return format && { url: toDataUrl(text, format), format };
-  }
-  async function fromZip({ block, episodes, lone }, query, clock) {
+  async function fromZip({ block, episodes, lone, span: span2 }, query, clock) {
     const key = `${block.zip}|${episodes.join(",")}`;
     const known = found.get(key);
     if (known) return known;
     const tail = block.size && block.size <= WHOLE ? Math.ceil(block.size * 1.1) + 1024 : void 0;
     const zip = zips.get(block.zip) ?? zips.set(block.zip, await openZip(query.fetch, block.zip, clock, tail));
-    const picked = pickFiles(zip.entries.map((e) => e.name), episodes, lone);
-    const reads = await Promise.allSettled(picked.map(async (file) => ({ file, read: await readFile(zip, file.path, clock) })));
-    const files = reads.flatMap((r) => r.status === "fulfilled" && r.value.read ? [{ file: r.value.file, ...r.value.read }] : []);
-    const failed = reads.find((r) => r.status === "rejected");
+    const picked = pickFiles(zip.entries.map((e) => e.name), episodes, lone, span2);
+    const reads = await Promise.allSettled(picked.map((file) => readPicked(zip, file, clock)));
+    const files = reads.flatMap((r) => r.status === "fulfilled" ? r.value : []);
+    const failed = reads.find((r) => r.status === "rejected" && !(r.reason instanceof SkippedEntry));
     if (failed && !files.length) throw asError(failed.reason);
     const results = named(files, block);
     return failed ? results : found.set(key, results);

@@ -80,6 +80,13 @@ test('an END after the season number is still a season tag', () => {
   assert.deepEqual([d?.episodes, d?.season, d?.group], [[24, 24], [12, 12], 'Crunchyroll'])
 })
 
+test('(part 1) names the episode when nothing else does, and is never taken for a group', () => {
+  const one = of('[Miish3lov] Shingeki no Kyojin - The Final Season - Kanketsu-hen (Part 1).ass')
+  assert.deepEqual([one?.episodes, one?.group], [[1, 1], 'Miish3lov'])
+  const two = of('[Miish3lov] Shingeki no Kyojin - The Final Season - Kanketsu-hen (Part 2) [S4 - 30 END].ass')
+  assert.deepEqual([two?.episodes, two?.season, two?.group], [[2, 2], [30, 30], 'Miish3lov'])
+})
+
 test('versions: a v2 tag or suffix', () => {
   assert.equal(of('Gintama - 110 [V2][Re Creators Team & Slam-Dunk][BD][Judas].ass')?.version, 2)
   assert.equal(of('Show - 05v3.ass')?.version, 3)
@@ -155,11 +162,21 @@ test('a season tagged batch answers the in-season episode, the series-wide numbe
 })
 
 test('one wrong season tag does not lose the episode, the gap between the two numbers finds it', () => {
-  // the real zip tags 26 as S2-03 where S2-04 was meant
+  // the real zip tags 26 as s2-03 where s2-04 was meant
   const names = Array.from({ length: 22 }, (_, i) => `[Rhythm] Lion - ${23 + i} [S2-${String(i + 1 === 4 ? 3 : i + 1).padStart(2, '0')}][720p].ass`)
   assert.deepEqual(pickFiles(names, [4, undefined], false).map(f => f.episodes), [[26, 26]])
   assert.deepEqual(pickFiles(names, [3, undefined], false).map(f => f.episodes), [[25, 25]])
   assert.equal(pickFiles(names, [22, undefined], false).length, 1)
+})
+
+test('when the page numbers like the plain number and not like the season tag, the plain number wins', () => {
+  // part 2 of the final season: the page says 1 to 12, the names say 01 to 12 and carry s4-17 to s4-28 besides
+  const names = Array.from({ length: 12 }, (_, i) => `[Hero Kan] Shingeki no Kyojin Part 2 - ${String(i + 1).padStart(2, '0')} (S4-${17 + i}).ass`)
+  assert.deepEqual(pickFiles(names, [1, undefined], false, [1, 12]).map(f => f.episodes), [[1, 1]])
+  assert.deepEqual(pickFiles(names, [12, undefined], false, [1, 12]).map(f => f.episodes), [[12, 12]])
+  // without the page's range, the season tags are tried first and the plain numbers after them
+  assert.deepEqual(pickFiles(names, [1, undefined], false).map(f => f.episodes), [[1, 1]])
+  assert.deepEqual(pickFiles(names, [20, undefined], false).map(f => f.episodes), [[4, 4]])
 })
 
 test('a gap is only trusted when nearly every tagged file agrees', () => {
@@ -184,8 +201,41 @@ test('a zip for one episode hands over what it has, however the file is named', 
   // two resolutions of one movie
   assert.equal(pickFiles(['[Tsubas] Jin-Rou [1080p][BD].ass', '[Tsubas] Jin-Rou [2160p][BD].ass'], [1], true).length, 2)
   assert.equal(pickFiles(['Arabic.srt', 'Other.srt'], [5], true).length, 2)
-  // unless the name clearly says it is another episode
-  assert.deepEqual(pickFiles(['Show - 07.ass'], [1], true), [])
+  // a number in the name of a lone file does not overrule the page: series-wide numbers are common
+  assert.equal(pickFiles(['[ESPADAS] Bleach Sennen Kessen-hen - 46.ass', 'Arial.ttf'], [6], true).length, 1)
+  // but several files that all name other episodes are not for this one
+  assert.deepEqual(pickFiles(['Show - 05.ass', 'Show - 06.ass'], [1], true), [])
+})
+
+test('a zip that numbers its files its own way is read by position when the counts agree', () => {
+  // the real part 2 zip: 39 to 50 for the twelve episodes the page lists as 1 to 12, season tags 14 to 25 besides
+  const names = Array.from({ length: 12 }, (_, i) => `[Rhythm] Re Zero - ${39 + i} [S2-${14 + i}].ass`)
+  assert.deepEqual(pickFiles(names, [1, undefined], false, [1, 12]).map(f => f.episodes), [[39, 39]])
+  assert.deepEqual(pickFiles(names, [12, undefined], false, [1, 12]).map(f => f.episodes), [[50, 50]])
+  // a heavy batch with one tag and the series-wide numbers 27 to 40
+  const bleach = Array.from({ length: 14 }, (_, i) => `[Rocks-Team] Bleach - ${27 + i}${i === 11 ? ' [S3-12] [1080p]' : ' '}.ass`)
+  assert.deepEqual(pickFiles(bleach, [12, undefined], false, [1, 14]).map(f => f.episodes), [[38, 38]])
+})
+
+test('reading by position needs everything to agree', () => {
+  const names = Array.from({ length: 12 }, (_, i) => `[G] Show - ${39 + i}.ass`)
+  // no span from the page
+  assert.deepEqual(pickFiles(names, [1, undefined], false), [])
+  // the page says 13 episodes, there are 12 files
+  assert.deepEqual(pickFiles(names, [1, undefined], false, [1, 13]), [])
+  // one file number falls inside the page's range, so the zip does use the page's numbering
+  const mixedUp = [...names.slice(0, 11), '[G] Show - 07.ass']
+  assert.deepEqual(pickFiles(mixedUp, [1, undefined], false, [1, 12]), [])
+  // an episode outside the range
+  assert.deepEqual(pickFiles(names, [13, undefined], false, [1, 12]), [])
+})
+
+test('a zip inside the zip with an episode in its name is a candidate, a fonts zip is not', () => {
+  assert.equal(describe('Boruto - 001 [BD][Crunchyroll & Zero-Kon & Almighty].zip')?.format, 'zip')
+  assert.equal(describe('Boruto - 001 [BD][Crunchyroll & Zero-Kon & Almighty].zip')?.group, 'Crunchyroll & Zero-Kon & Almighty')
+  assert.equal(describe('Fonts.zip'), undefined)
+  assert.equal(describe('Show Fonts 01-12.zip'), undefined)
+  assert.deepEqual(pickFiles(['Boruto - 001 [A].zip', 'Boruto - 002 [A].zip', 'www.Mirai.ai.txt'], [2, undefined], false).map(f => f.path), ['Boruto - 002 [A].zip'])
 })
 
 test('one unnumbered file in a bigger zip is a special or a compilation, it covers the whole block', () => {
@@ -196,6 +246,11 @@ test('one unnumbered file in a bigger zip is a special or a compilation, it cove
     assert.equal(pickFiles(["[Kalaacom] Ayane's High Kick - Round 1 and 2.ass", 'Mirai.ai.txt'], [episode], false).length, 1)
   }
   assert.equal(pickFiles(['Arabic.srt', 'Other.srt'], [5], false).length, 0)
+})
+
+test('the same episode from two streaming services is two files', () => {
+  const names = ['[Shahid] Bleach - 41 (407) [AMZN][VARYG].ass', '[Shahid] Bleach - 41 (407) [DSNP][VARYG].ass', 'Mirai Anime.txt']
+  assert.equal(pickFiles(names, [1, undefined], true, [1, 1]).length, 2)
 })
 
 test('nothing matching gives nothing', () => {

@@ -1,12 +1,12 @@
 import { ORIGIN } from './http.ts'
 
 export interface Block {
-  // inclusive ranges the page says the zip has, empty when it doesn't say or says something odd
+  // episode ranges the page lists, empty if it says nothing or something odd
   episodes: Array<[number, number]>
   release: string
   translators: string[]
   zip: string
-  // what the page says the zip weighs, roughly, in bytes
+  // about what the page says the zip weighs, in bytes
   size?: number
 }
 
@@ -22,18 +22,18 @@ export function decodeEntities (text: string): string {
 
 const plain = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
 
-// the site is arabic, the odd badge may well use arabic-indic digits
+// it's an arabic site, a badge could use arabic digits
 const asciiDigits = (text: string) => text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660))
 
 const UNITS: Record<string, number> = { كيلو: 1024, ميجا: 1024 ** 2, جيجا: 1024 ** 3 }
 
-// "13.36 كيلوبايت", "4.58 ميجابايت": kilobytes, megabytes and gigabytes, in arabic
+// كيلوبايت is kilobytes, ميجابايت megabytes, جيجابايت gigabytes
 export function parseSize (text: string): number | undefined {
   const m = /^([\d.]+)\s*(كيلو|ميجا|جيجا)?\s*بايت$/.exec(asciiDigits(text).replace(/\s+/g, ' ').trim())
   return m && Number.isFinite(Number(m[1])) ? Math.round(Number(m[1]) * (UNITS[m[2] ?? ''] ?? 1)) : undefined
 }
 
-// the cell is `<span>01</span>` for one episode and `<span>01</span> إلى <span>12</span>` for a range
+// one episode is one badge, a range is badge إلى badge
 function parseEpisodes (cell: string): Array<[number, number]> {
   const badges = [...cell.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map(m => asciiDigits(m[1]!).trim())
   if (!badges.length || !badges.every(b => /^\d{1,5}$/.test(b))) return []
@@ -43,7 +43,7 @@ function parseEpisodes (cell: string): Array<[number, number]> {
   return numbers.map(n => [n, n])
 }
 
-// a block can carry a second link to a fonts pack on another host or a rar mirror, those are of no use here
+// a block can also link a fonts pack or a rar mirror somewhere else, skip those
 function zipLink (hrefs: string[]): string | undefined {
   for (const href of hrefs) {
     try {
@@ -60,7 +60,7 @@ function zipLink (hrefs: string[]): string | undefined {
 const BLOCK = /<div class="entry fansub-details">([\s\S]*?)<\/table>\s*<\/div>\s*<div class="links-file">([\s\S]*?)<\/div>/g
 const ROW = /<tr>\s*<th>([\s\S]*?)<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/g
 
-// one block per zip on the /subtitle/<slug>/ page, there is no dom in a worker so this is plain regex
+// one block per zip on /subtitle/<slug>/. no dom in a worker, so regex
 export function parseListing (html: string): Block[] {
   const blocks: Block[] = []
 
@@ -74,7 +74,7 @@ export function parseListing (html: string): Block[] {
       if (label.includes('الحلقات')) block.episodes = parseEpisodes(td!)
       else if (label.includes('صدار')) block.release = [...td!.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map(m => plain(m[1]!)).filter(Boolean).join('/')
       else if (label.includes('المترجم')) block.translators = [...td!.matchAll(/<a[^>]*>([^<]*)<\/a>/g)].map(m => plain(m[1]!)).filter(Boolean)
-      // the size cell says so when the file is gone from the server
+      // the size cell says when the file is gone
       else if (label.includes('حجم')) {
         missing = plain(td!).includes('غير موجود')
         size = parseSize(plain(td!))

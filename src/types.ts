@@ -1,4 +1,4 @@
-// the slice of hayase's extension api we touch, see types.d.ts in its interface
+// just the bits of hayase's extension api we use
 
 export interface SubtitleQuery {
   anilistId: number
@@ -9,7 +9,7 @@ export interface SubtitleQuery {
   absoluteEpisodeNumber?: number | null
   titles: string[]
   media?: { idMal?: number | null, format?: string | null }
-  // hayase passes its own fetch in, on ios it's a proxy (no headers on the response, no body stream)
+  // on ios this is a proxy: no response headers, no body stream
   fetch: typeof fetch
 }
 

@@ -2,11 +2,11 @@ import type { Block } from './listing.ts'
 import type { Picked } from './names.ts'
 import type { Format } from './subtitle.ts'
 
-// hayase uses this string as a file name, and reads the type from what follows the last dot,
-// so it has to end in the extension. what's before it is what the track is called in the player
+// hayase treats this as a file name and takes the type after the last dot, so it ends in the extension.
+// the rest is the track's name in the player
 export function label (file: Picked, block: Block, format: Format, extra = ''): string {
   const credited = block.translators.join(' & ')
-  // in a zip with several groups the file name knows who did this one, the page only lists them all
+  // in a mixed zip the file name knows who made this one, the page just lists everyone
   const who = (file.mixed ? file.group ?? credited : credited || file.group) || 'Mirai'
   const release = block.release ? ` (${block.release})` : ''
 
@@ -17,7 +17,7 @@ export function label (file: Picked, block: Block, format: Format, extra = ''): 
   return `${name}.${format}`
 }
 
-// "Arabic - Rhythm (BD).ass" twice becomes "... 2.ass" for the second
+// same label twice gets a 2 on the second one
 export function unique (names: string[]): string[] {
   const seen = new Map<string, number>()
   return names.map(name => {

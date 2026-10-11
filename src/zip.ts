@@ -1,5 +1,6 @@
 import { inflateSync } from 'fflate'
 
+import { noClock } from './clock.ts'
 import { request } from './http.ts'
 
 import type { Clock } from './clock.ts'
@@ -17,15 +18,24 @@ export interface ZipEntry {
 
 export interface Zip {
   entries: ZipEntry[]
-  // takes the clock of the call that reads, a zip stays cached longer than any one call
+  // gets the clock of whoever reads, a zip outlives any single call
   read: (entry: ZipEntry, clock: Clock) => Promise<Uint8Array>
 }
 
+// not worth opening: too big, locked, odd method. nothing the user can fix, so callers stay quiet
+export class SkippedEntry extends Error {
+  constructor (message: string) {
+    super(message)
+    this.name = 'SkippedEntry'
+  }
+}
+
 const TAIL = 64 * 1024
-// a local header can carry a longer extra field than the directory one, leave room for that
+// a local header can have a longer extra field than the directory's, leave room
 const SLACK = 512
-// subtitle files are well below these, the caps are there for broken or hostile zips
-const MAX_ENTRY = 16 * 1024 * 1024
+// real subs are way smaller than this, the caps are for broken zips and files a phone couldn't show anyway
+const MAX_SIZE = 12 * 1024 * 1024
+const MAX_PACKED = 4 * 1024 * 1024
 const MAX_DIRECTORY = 4 * 1024 * 1024
 
 const TABLE = new Uint32Array(256).map((_, n) => {
@@ -48,10 +58,10 @@ function decodeName (raw: Uint8Array): string {
   try {
     name = new TextDecoder('utf-8', { fatal: true }).decode(raw)
   } catch {
-    // old tools write the local codepage, arabic windows zips are mostly cp1256
+    // old tools use the local codepage, arabic windows ones are cp1256
     name = new TextDecoder('windows-1256').decode(raw)
   }
-  // some tools write backslashes as separators
+  // some tools use backslashes
   return name.replaceAll('\\', '/')
 }
 
@@ -89,14 +99,10 @@ function parseDirectory (dir: Uint8Array, count: number): ZipEntry[] {
   return entries
 }
 
-// reads the end of the file first, that is enough to list everything, and entries are then
-// pulled one by one with range requests, so a 20mb batch zip costs about what one episode weighs
-export async function openZip (fetchFn: typeof fetch, url: string, clock: Clock, tailSize = TAIL): Promise<Zip> {
-  const res = await request(fetchFn, url, clock, { Range: `bytes=-${tailSize}` })
-  const tail = new Uint8Array(await clock.run(res.arrayBuffer()))
-  // a server that skips ranges sends the whole file, which works too
-  const whole = res.status !== 206
+type Outside = (start: number, length: number, clock: Clock) => Promise<Uint8Array>
 
+// tail is the end of the file (all of it when whole), anything earlier comes from outside
+async function build (tail: Uint8Array, whole: boolean, outside: Outside, clock: Clock): Promise<Zip> {
   const end = findEnd(tail)
   const count = u16(tail, end + 10)
   const dirSize = u32(tail, end + 12)
@@ -104,24 +110,20 @@ export async function openZip (fetchFn: typeof fetch, url: string, clock: Clock,
   if (count === 0xffff || dirSize === 0xffffffff || dirOffset === 0xffffffff) throw new Error('zip64 files are not supported')
   if (dirSize > MAX_DIRECTORY) throw new Error('that zip has a silly amount of files')
 
-  // where tail[0] sits in the real file, the directory ends right where the end record starts
+  // where tail[0] is in the real file: the directory ends where the end record starts
   const base = whole ? 0 : dirOffset + dirSize - end
 
-  // the tail always ends at the end of the file, so anything starting inside it is covered
-  const grab = async (start: number, length: number, clock: Clock): Promise<Uint8Array> => {
-    if (start >= base) return tail.subarray(start - base, start - base + length)
-    const got = await request(fetchFn, url, clock, { Range: `bytes=${start}-${start + length - 1}` })
-    const body = new Uint8Array(await clock.run(got.arrayBuffer()))
-    return got.status === 206 ? body : body.subarray(start, start + length)
-  }
+  // the tail ends at the end of the file, so anything that starts inside it is covered
+  const grab = (start: number, length: number, clock: Clock) =>
+    start >= base ? Promise.resolve(tail.subarray(start - base, start - base + length)) : outside(start, length, clock)
 
   const entries = parseDirectory(await grab(dirOffset, dirSize, clock), count)
 
   return {
     entries,
     async read (entry, clock) {
-      if (entry.flags & 1) throw new Error(`${entry.name} is encrypted`)
-      if (entry.size > MAX_ENTRY || entry.packed > MAX_ENTRY) throw new Error(`${entry.name} is too big`)
+      if (entry.flags & 1) throw new SkippedEntry(`${entry.name} is encrypted`)
+      if (entry.size > MAX_SIZE || entry.packed > MAX_PACKED) throw new SkippedEntry(`${entry.name} is too big`)
 
       let buf = await grab(entry.offset, 30 + entry.nameLength + SLACK + entry.packed, clock)
       if (buf.length < 30 || u32(buf, 0) !== 0x04034b50) throw new Error(`${entry.name} has a broken header`)
@@ -133,10 +135,28 @@ export async function openZip (fetchFn: typeof fetch, url: string, clock: Clock,
       let data: Uint8Array
       if (entry.method === 0) data = packed
       else if (entry.method === 8) data = inflateSync(packed, { out: new Uint8Array(entry.size) })
-      else throw new Error(`${entry.name} uses a zip method we can't open`)
+      else throw new SkippedEntry(`${entry.name} uses a zip method we can't open`)
 
       if (data.length !== entry.size || crc32(data) !== entry.crc) throw new Error(`${entry.name} is damaged`)
       return data
     }
   }
+}
+
+// end of the file first, that lists everything. then entries one by one by range, so a 60mb batch costs about one episode
+export async function openZip (fetchFn: typeof fetch, url: string, clock: Clock, tailSize = TAIL): Promise<Zip> {
+  const res = await request(fetchFn, url, clock, { Range: `bytes=-${tailSize}` })
+  const tail = new Uint8Array(await clock.run(res.arrayBuffer()))
+
+  return await build(tail, res.status !== 206, async (start, length, clock) => {
+    const got = await request(fetchFn, url, clock, { Range: `bytes=${start}-${start + length - 1}` })
+    const body = new Uint8Array(await clock.run(got.arrayBuffer()))
+    // a server without range support sends the whole file, still fine
+    return got.status === 206 ? body : body.subarray(start, start + length)
+  }, clock)
+}
+
+// a zip from inside another zip, nothing to fetch
+export function zipFromBytes (bytes: Uint8Array): Promise<Zip> {
+  return build(bytes, true, () => Promise.reject(new Error('that zip is cut short')), noClock)
 }

@@ -3,8 +3,10 @@ export interface Clock {
   run: <T>(work: Promise<T>) => Promise<T>
 }
 
-// hayase gives a call 10 seconds and drops it quietly after that, so we keep our own
-// deadline and hand back what we have before the host pulls the plug
+// for when there's nothing to wait for
+export const noClock: Clock = { left: () => Infinity, run: work => work }
+
+// hayase kills a call after 10s without a word, so we stop first and hand back what we have
 export function startClock (ms: number): Clock {
   const end = Date.now() + ms
 
