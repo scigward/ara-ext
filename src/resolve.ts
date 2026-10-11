@@ -50,14 +50,23 @@ function searchTerms (titles: string[]): string[] {
   return terms.slice(0, 4)
 }
 
-// ids are exact, they beat any title
-function byIds (candidates: RestAnime[], query: SubtitleQuery, mal?: number): string | undefined {
-  return candidates.find(c => {
+// ids are exact, they beat any title. the candidate that agrees on the most ids wins.
+// strict: when we have a mal id the site's mal id has to agree too, an anilist id alone has been
+// seen on the wrong entry (a special that carries its series' id)
+function byIds (candidates: RestAnime[], query: SubtitleQuery, mal: number | undefined, strict: boolean): string | undefined {
+  let best: { slug: string, score: number } | undefined
+
+  for (const c of candidates) {
     const links = c.acf?.external_links
-    return idOf(links?.anilist_id) === query.anilistId ||
-      (mal !== undefined && idOf(links?.my_anime_list_id) === mal) ||
-      (!!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid)
-  })?.slug
+    const anilist = idOf(links?.anilist_id) === query.anilistId
+    const myanimelist = mal !== undefined && idOf(links?.my_anime_list_id) === mal
+    const anidb = !!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid
+
+    const score = Number(anilist) + Number(myanimelist) + Number(anidb)
+    if (!score || (strict && mal !== undefined && !myanimelist)) continue
+    if (!best || score > best.score) best = { slug: c.slug, score }
+  }
+  return best?.slug
 }
 
 // no ids to compare: the whole title has to match, and only one candidate may
@@ -104,7 +113,7 @@ export async function findSlug (query: SubtitleQuery, clock: Clock, slugs: Slugs
       if (hits.length < 2) return hits[0]
       // two entries share the id, the ids on their pages say which one is ours
       const rows = await Promise.all(hits.map(slug => rest(fetchFn, `slug=${encodeURIComponent(slug)}`, clock)))
-      return byIds(rows.flat(), query, mal) ?? hits[0]
+      return byIds(rows.flat(), query, mal, false) ?? hits[0]
     }))
   }
   // quick and small, usually wins. the filter above covers the rest
@@ -112,18 +121,18 @@ export async function findSlug (query: SubtitleQuery, clock: Clock, slugs: Slugs
   if (terms[0]) {
     lookups.push(search(fetchFn, terms[0], clock).then(rows => {
       first = rows
-      return byIds(rows, query, mal)
+      return byIds(rows, query, mal, true)
     }))
   }
 
   let found = await firstFound(lookups)
 
   // last resort: title match (the site has no ids for it), then the other titles
-  found ??= byTitle(first, query)
+  found ??= byIds(first, query, mal, false) ?? byTitle(first, query)
   for (const term of terms.slice(1)) {
     if (found) break
     const rows = await search(fetchFn, term, clock)
-    found = byIds(rows, query, mal) ?? byTitle(rows, query)
+    found = byIds(rows, query, mal, false) ?? byTitle(rows, query)
   }
 
   // misses are remembered shorter, the site may add it tomorrow

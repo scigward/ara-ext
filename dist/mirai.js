@@ -886,11 +886,18 @@ function searchTerms(titles) {
   }
   return terms.slice(0, 4);
 }
-function byIds(candidates, query, mal) {
-  return candidates.find((c) => {
+function byIds(candidates, query, mal, strict) {
+  let best;
+  for (const c of candidates) {
     const links = c.acf?.external_links;
-    return idOf(links?.anilist_id) === query.anilistId || mal !== void 0 && idOf(links?.my_anime_list_id) === mal || !!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid;
-  })?.slug;
+    const anilist = idOf(links?.anilist_id) === query.anilistId;
+    const myanimelist = mal !== void 0 && idOf(links?.my_anime_list_id) === mal;
+    const anidb = !!query.anidbAid && idOf(links?.anidb_id) === query.anidbAid;
+    const score = Number(anilist) + Number(myanimelist) + Number(anidb);
+    if (!score || strict && mal !== void 0 && !myanimelist) continue;
+    if (!best || score > best.score) best = { slug: c.slug, score };
+  }
+  return best?.slug;
 }
 function byTitle(candidates, query) {
   const wanted = new Set(query.titles.map(squash));
@@ -928,22 +935,22 @@ async function findSlug(query, clock, slugs) {
     lookups.push(byMal(fetchFn, mal, clock).then(async (hits) => {
       if (hits.length < 2) return hits[0];
       const rows = await Promise.all(hits.map((slug) => rest(fetchFn, `slug=${encodeURIComponent(slug)}`, clock)));
-      return byIds(rows.flat(), query, mal) ?? hits[0];
+      return byIds(rows.flat(), query, mal, false) ?? hits[0];
     }));
   }
   let first = [];
   if (terms[0]) {
     lookups.push(search(fetchFn, terms[0], clock).then((rows) => {
       first = rows;
-      return byIds(rows, query, mal);
+      return byIds(rows, query, mal, true);
     }));
   }
   let found = await firstFound(lookups);
-  found ?? (found = byTitle(first, query));
+  found ?? (found = byIds(first, query, mal, false) ?? byTitle(first, query));
   for (const term of terms.slice(1)) {
     if (found) break;
     const rows = await search(fetchFn, term, clock);
-    found = byIds(rows, query, mal) ?? byTitle(rows, query);
+    found = byIds(rows, query, mal, false) ?? byTitle(rows, query);
   }
   return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1e3) ?? void 0;
 }
