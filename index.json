@@ -11,6 +11,7 @@
     "icon": "https://miraianime.net/wp-content/uploads/logo4.png",
     "media": "sub",
     "languages": ["SA"],
+    "url": "aHR0cHM6Ly9taXJhaWFuaW1lLm5ldA==",
     "update": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/index.json",
     "code": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/dist/mirai.js",
     "options": {

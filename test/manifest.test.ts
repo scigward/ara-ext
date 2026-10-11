@@ -14,6 +14,7 @@ interface Entry {
   code: string
   media: string
   languages: string[]
+  url: string
   options: Record<string, { type: string, description: string, default: unknown }>
 }
 
@@ -36,6 +37,11 @@ test('update and code point at this repo, the icon is the favicon of the site it
   assert.ok(entry!.code.endsWith('/dist/mirai.js'))
   // no artwork of our own in this repo
   assert.match(entry!.icon, /^https:\/\/miraianime\.net\/wp-content\/uploads\/[^/]+\.png$/)
+})
+
+test('the site is told to hayase as a base64 origin, so desktop hayase can switch cors on for it', () => {
+  // the pages and the zips send no cors headers, only the ios app (which has no cors) works without this
+  assert.equal(atob(manifest[0]!.url), 'https://miraianime.net')
 })
 
 test('a new version of the code is a new version of the manifest, or hayase never updates', () => {
