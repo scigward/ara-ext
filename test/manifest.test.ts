@@ -20,7 +20,6 @@ interface Entry {
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const manifest = JSON.parse(read('../index.json')) as Entry[]
-const { version } = JSON.parse(read('../package.json')) as { version: string }
 
 test('the manifest has what hayase insists on when importing', () => {
   assert.equal(manifest.length, 1)
@@ -44,9 +43,11 @@ test('the site is told to hayase as a base64 origin, so desktop hayase can switc
   assert.equal(atob(manifest[0]!.url), 'https://miraianime.net')
 })
 
-test('a new version of the code is a new version of the manifest, or hayase never updates', () => {
-  assert.equal(manifest[0]!.version, version)
-  assert.match(read('../dist/mirai.js'), new RegExp(`^// mirai-ext ${version.replaceAll('.', '\\.')},`))
+test('the version lives in index.json only, so bumping it never needs anything else to follow', () => {
+  // hayase updates the extension when this changes. package.json and the built file carry no version of their own
+  assert.match(manifest[0]!.version, /^\d+\.\d+\.\d+$/)
+  assert.equal('version' in (JSON.parse(read('../package.json')) as object), false)
+  assert.doesNotMatch(read('../dist/mirai.js').split('\n')[0]!, /\d+\.\d+\.\d+/)
 })
 
 test('the built file the manifest points at exists', () => {

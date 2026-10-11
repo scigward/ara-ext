@@ -1,6 +1,5 @@
 {
   "name": "mirai-ext",
-  "version": "0.1.0",
   "private": true,
   "description": "arabic subtitles from miraianime.net for hayase",
   "license": "MIT",

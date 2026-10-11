@@ -1,10 +1,7 @@
-import { readFileSync } from 'node:fs'
-
 import { build } from 'esbuild'
 
-const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-
-// one file, hayase imports it from a blob so bare imports can't work
+// one file, hayase imports it from a blob so bare imports can't work.
+// no version in the header: that lives in index.json only, so bumping it never changes the build
 await build({
   entryPoints: ['src/index.ts'],
   outfile: 'dist/mirai.js',
@@ -13,6 +10,6 @@ await build({
   platform: 'neutral',
   target: 'es2020',
   legalComments: 'inline',
-  banner: { js: `// mirai-ext ${version}, built file, edit src/ instead` },
+  banner: { js: '// mirai-ext, built file, edit src/ instead' },
   logLevel: 'info'
 })

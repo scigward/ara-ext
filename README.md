@@ -56,7 +56,7 @@ npm run smoke -- <myanimelist id> <episode> [series-wide episode] [title ...]
 
 `npm run smoke` talks to the real site and writes what it got to `local/smoke/`. The tests never do, they use a fake site.
 
-`dist/mirai.js` is the file Hayase downloads. It is built from `src/` and committed, and CI fails if the two differ. A change to it needs a new `version` in both `package.json` and `index.json`, or Hayase will not update.
+`dist/mirai.js` is the file Hayase downloads. It is built from `src/` and committed, and CI fails if the two differ. When it changes, raise `version` in `index.json` (the only place the version lives), or Hayase will not update.
 
 ## License
 
