@@ -1,0 +1,29 @@
+[
+  {
+    "manifestVersion": 2,
+    "deprecated": false,
+    "name": "Mirai Anime",
+    "version": "0.1.0",
+    "description": "Arabic subtitles from miraianime.net, matched by the anime's MyAnimeList and AniList ids",
+    "id": "miraianime",
+    "type": "subtitle",
+    "accuracy": "high",
+    "icon": "https://miraianime.net/wp-content/uploads/logo4.png",
+    "media": "sub",
+    "languages": ["SA"],
+    "update": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/index.json",
+    "code": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/dist/mirai.js",
+    "options": {
+      "translators": {
+        "type": "string",
+        "description": "Translators you like best, comma separated, the first one found comes first (for example: Cr, Celestial Dragons)",
+        "default": ""
+      },
+      "maxFiles": {
+        "type": "number",
+        "description": "Most subtitle files to give for one episode",
+        "default": 3
+      }
+    }
+  }
+]
