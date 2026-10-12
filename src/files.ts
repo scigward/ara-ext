@@ -11,29 +11,27 @@ import type { Zip } from './zip.ts'
 export interface Read {
   // the file in the outer zip, it has the group and tags
   file: Picked
-  url: string
+  text: string
   format: Format
 }
 
-// the address of a file: its path in the outer zip, then its path in the zip inside that one
-type Serve = (file: string, inner?: string) => string
-
 const entryOf = (zip: Zip, path: string) => zip.entries.find(e => e.name === path)!
 
-// the text decides the format, junk comes out as nothing. the server hands out the same bytes later
-function fromBytes (bytes: Uint8Array, file: Picked, url: string): Read[] {
-  const format = detectFormat(decodeText(bytes))
-  return format ? [{ file, url, format }] : []
+// the text decides the format, junk comes out as nothing
+function fromBytes (bytes: Uint8Array, file: Picked): Read[] {
+  const text = decodeText(bytes)
+  const format = detectFormat(text)
+  return format ? [{ file, text, format }] : []
 }
 
-export async function readPicked (zip: Zip, file: Picked, clock: Clock, serve: Serve): Promise<Read[]> {
+export async function readPicked (zip: Zip, file: Picked, clock: Clock): Promise<Read[]> {
   const bytes = await zip.read(entryOf(zip, file.path), clock)
-  if (file.format !== 'zip') return fromBytes(bytes, file, serve(file.path))
+  if (file.format !== 'zip') return fromBytes(bytes, file)
 
   // some batches are zips of zips, one per episode: what's inside is for the episode in the name.
   // one level only, it's all in memory already
   const inner = await zipFromBytes(bytes)
   const picks = pickFiles(inner.entries.map(e => e.name), [file.episodes?.[0]], true).filter(p => p.format !== 'zip')
-  const reads = await Promise.all(picks.map(async p => fromBytes(await inner.read(entryOf(inner, p.path), noClock), file, serve(file.path, p.path))))
+  const reads = await Promise.all(picks.map(async p => fromBytes(await inner.read(entryOf(inner, p.path), noClock), file)))
   return reads.flat()
 }

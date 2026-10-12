@@ -8,15 +8,23 @@ import { parseListing } from './listing.ts'
 import { pickFiles } from './names.ts'
 import { maxFiles, plan } from './plan.ts'
 import { findSlug, slugCache } from './resolve.ts'
-import { SERVER, serveUrl } from './serve.ts'
+import { toLink } from './subtitle.ts'
 import { openZip, SkippedEntry } from './zip.ts'
 
 import type { Clock } from './clock.ts'
 import type { Block } from './listing.ts'
 import type { Read } from './files.ts'
 import type { Step } from './plan.ts'
+import type { Format } from './subtitle.ts'
 import type { Options, SubtitleQuery, SubtitleResult } from './types.ts'
 import type { Zip } from './zip.ts'
+
+// what is remembered: the text, the link is made when it is handed over (a blob link does not live forever)
+interface Found {
+  text: string
+  format: Format
+  language: string
+}
 
 const MINUTE = 60 * 1000
 // a zip this small comes whole in one request, a round trip costs more than the extra bytes
@@ -30,7 +38,7 @@ const urlSafe = (slug: string) => /%[\da-f]{2}/i.test(slug) ? slug : encodeURICo
 
 // label for each file. when two would match (1080p vs 2160p, two streaming services) the tags only one has,
 // then a number
-function named (files: Read[], block: Block): SubtitleResult[] {
+function named (files: Read[], block: Block): Found[] {
   const plain = files.map(f => label(f.file, block, f.format))
 
   const names = files.map((f, i) => {
@@ -39,15 +47,15 @@ function named (files: Read[], block: Block): SubtitleResult[] {
     // tags they all share say nothing, the rest tell them apart
     return label(f.file, block, f.format, f.file.tags.filter(tag => alike.some(other => !other.file.tags.includes(tag))).join(' '))
   })
-  return unique(names).map((language, i) => ({ url: files[i]!.url, language }))
+  return unique(names).map((language, i) => ({ text: files[i]!.text, format: files[i]!.format, language }))
 }
 
 // hayase drops a call after 10s, so the default answers before that with what it has
-export function createExtension (budget = 8000, grace = 1500, server = SERVER) {
+export function createExtension (budget = 8000, grace = 1500, link = toLink) {
   const slugs = slugCache()
   const listings = cache<Block[]>(10 * MINUTE, 64)
   const zips = cache<Zip>(30 * MINUTE, 12)
-  const found = cache<SubtitleResult[]>(30 * MINUTE, 16)
+  const found = cache<Found[]>(30 * MINUTE, 16)
 
   async function listing (slug: string, fetchFn: typeof fetch, clock: Clock): Promise<Block[]> {
     const known = listings.get(slug)
@@ -62,7 +70,7 @@ export function createExtension (budget = 8000, grace = 1500, server = SERVER) {
     }
   }
 
-  async function fromZip ({ block, episodes, lone, span }: Step, query: SubtitleQuery, clock: Clock): Promise<SubtitleResult[]> {
+  async function fromZip ({ block, episodes, lone, span }: Step, query: SubtitleQuery, clock: Clock): Promise<Found[]> {
     const key = `${block.zip}|${episodes.join(',')}`
     const known = found.get(key)
     if (known) return known
@@ -71,8 +79,7 @@ export function createExtension (budget = 8000, grace = 1500, server = SERVER) {
     const zip = zips.get(block.zip) ?? zips.set(block.zip, await openZip(query.fetch, block.zip, clock, tail))
     const picked = pickFiles(zip.entries.map(e => e.name), episodes, lone, span)
 
-    const serve = (file: string, inner?: string) => serveUrl(server, block.zip, file, inner)
-    const reads = await Promise.allSettled(picked.map(file => readPicked(zip, file, clock, serve)))
+    const reads = await Promise.allSettled(picked.map(file => readPicked(zip, file, clock)))
     const files = reads.flatMap(r => r.status === 'fulfilled' ? r.value : [])
     // too big or locked stays that way, nothing to retry or report
     const failed = reads.find((r): r is PromiseRejectedResult => r.status === 'rejected' && !(r.reason instanceof SkippedEntry))
@@ -109,7 +116,7 @@ export function createExtension (budget = 8000, grace = 1500, server = SERVER) {
       }
       // two zips can end up with the same label
       const names = unique(results.map(r => r.language))
-      return results.slice(0, maxFiles(options)).map((r, i) => ({ ...r, language: names[i]! }))
+      return results.slice(0, maxFiles(options)).map((r, i) => ({ url: link(r.text, r.format), language: names[i]! }))
     }
   }
 }

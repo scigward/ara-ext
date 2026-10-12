@@ -46,8 +46,7 @@ const TABLE = new Uint32Array(256).map((_, n) => {
 
 export function crc32 (bytes: Uint8Array): number {
   let c = 0xffffffff
-  // an index loop, the iterator is three times slower and the unzip server has little cpu to spare
-  for (let i = 0; i < bytes.length; i++) c = TABLE[(c ^ bytes[i]!) & 0xff]! ^ (c >>> 8)
+  for (const b of bytes) c = TABLE[(c ^ b) & 0xff]! ^ (c >>> 8)
   return (c ^ 0xffffffff) >>> 0
 }
 

@@ -42,6 +42,13 @@ function startClock(ms) {
 
 // src/subtitle.ts
 var FORMATS = ["ass", "ssa", "srt", "vtt", "sub"];
+var MIME = {
+  ass: "text/x-ssa",
+  ssa: "text/x-ssa",
+  srt: "application/x-subrip",
+  vtt: "text/vtt",
+  sub: "text/plain"
+};
 function formatOf(fileName) {
   const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
   return FORMATS.find((f) => f === ext);
@@ -61,6 +68,22 @@ function detectFormat(text) {
   if (/^\s*WEBVTT/.test(text) && TIMES.test(text)) return "vtt";
   if (TIMES.test(text)) return "srt";
   if (/^[{[]\d+[}\]][{[]\d+[}\]]/m.test(text)) return "sub";
+}
+function toDataUrl(text, format) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i2 = 0; i2 < bytes.length; i2 += 32768) binary += String.fromCharCode(...bytes.subarray(i2, i2 + 32768));
+  return `data:${MIME[format]};charset=utf-8;base64,${btoa(binary)}`;
+}
+function toBlobUrl(text, format) {
+  const url = URL.createObjectURL(new Blob([text], { type: `${MIME[format]};charset=utf-8` }));
+  const timer = setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1e3);
+  timer.unref?.();
+  return url;
+}
+function toLink(text, format) {
+  const inWorker = typeof WorkerGlobalScope !== "undefined" && globalThis instanceof WorkerGlobalScope;
+  return inWorker ? toBlobUrl(text, format) : toDataUrl(text, format);
 }
 
 // src/names.ts
@@ -614,7 +637,7 @@ var TABLE = new Uint32Array(256).map((_, n) => {
 });
 function crc32(bytes) {
   let c = 4294967295;
-  for (let i2 = 0; i2 < bytes.length; i2++) c = TABLE[(c ^ bytes[i2]) & 255] ^ c >>> 8;
+  for (const b of bytes) c = TABLE[(c ^ b) & 255] ^ c >>> 8;
   return (c ^ 4294967295) >>> 0;
 }
 var u162 = (b, o) => b[o] | b[o + 1] << 8;
@@ -704,16 +727,17 @@ function zipFromBytes(bytes) {
 
 // src/files.ts
 var entryOf = (zip, path) => zip.entries.find((e) => e.name === path);
-function fromBytes(bytes, file, url) {
-  const format = detectFormat(decodeText(bytes));
-  return format ? [{ file, url, format }] : [];
+function fromBytes(bytes, file) {
+  const text = decodeText(bytes);
+  const format = detectFormat(text);
+  return format ? [{ file, text, format }] : [];
 }
-async function readPicked(zip, file, clock, serve) {
+async function readPicked(zip, file, clock) {
   const bytes = await zip.read(entryOf(zip, file.path), clock);
-  if (file.format !== "zip") return fromBytes(bytes, file, serve(file.path));
+  if (file.format !== "zip") return fromBytes(bytes, file);
   const inner = await zipFromBytes(bytes);
   const picks = pickFiles(inner.entries.map((e) => e.name), [file.episodes?.[0]], true).filter((p) => p.format !== "zip");
-  const reads = await Promise.all(picks.map(async (p) => fromBytes(await inner.read(entryOf(inner, p.path), noClock), file, serve(file.path, p.path))));
+  const reads = await Promise.all(picks.map(async (p) => fromBytes(await inner.read(entryOf(inner, p.path), noClock), file)));
   return reads.flat();
 }
 
@@ -941,16 +965,6 @@ async function findSlug(query, clock, slugs) {
   return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1e3) ?? void 0;
 }
 
-// src/serve.ts
-var SERVER = "https://mirai-subs.mirai-ext.workers.dev";
-function serveUrl(server, zip, file, inner) {
-  const url = new URL("/sub", server);
-  url.searchParams.set("zip", zip);
-  url.searchParams.set("file", file);
-  if (inner) url.searchParams.set("in", inner);
-  return url.href;
-}
-
 // src/extension.ts
 var MINUTE = 60 * 1e3;
 var WHOLE = 300 * 1024;
@@ -964,9 +978,9 @@ function named(files, block) {
     if (alike.length < 2) return plain2[i2];
     return label(f.file, block, f.format, f.file.tags.filter((tag) => alike.some((other) => !other.file.tags.includes(tag))).join(" "));
   });
-  return unique(names).map((language, i2) => ({ url: files[i2].url, language }));
+  return unique(names).map((language, i2) => ({ text: files[i2].text, format: files[i2].format, language }));
 }
-function createExtension(budget = 8e3, grace = 1500, server = SERVER) {
+function createExtension(budget = 8e3, grace = 1500, link = toLink) {
   const slugs = slugCache();
   const listings = cache(10 * MINUTE, 64);
   const zips = cache(30 * MINUTE, 12);
@@ -988,8 +1002,7 @@ function createExtension(budget = 8e3, grace = 1500, server = SERVER) {
     const tail = block.size && block.size <= WHOLE ? Math.ceil(block.size * 1.1) + 1024 : void 0;
     const zip = zips.get(block.zip) ?? zips.set(block.zip, await openZip(query.fetch, block.zip, clock, tail));
     const picked = pickFiles(zip.entries.map((e) => e.name), episodes, lone, span2);
-    const serve = (file, inner) => serveUrl(server, block.zip, file, inner);
-    const reads = await Promise.allSettled(picked.map((file) => readPicked(zip, file, clock, serve)));
+    const reads = await Promise.allSettled(picked.map((file) => readPicked(zip, file, clock)));
     const files = reads.flatMap((r) => r.status === "fulfilled" ? r.value : []);
     const failed = reads.find((r) => r.status === "rejected" && !(r.reason instanceof SkippedEntry));
     if (failed && !files.length) throw asError(failed.reason);
@@ -1015,7 +1028,7 @@ function createExtension(budget = 8e3, grace = 1500, server = SERVER) {
         if (failure) throw asError(failure);
       }
       const names = unique(results.map((r) => r.language));
-      return results.slice(0, maxFiles(options)).map((r, i2) => ({ ...r, language: names[i2] }));
+      return results.slice(0, maxFiles(options)).map((r, i2) => ({ url: link(r.text, r.format), language: names[i2] }));
     }
   };
 }

@@ -3,13 +3,12 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 import { createExtension } from '../src/extension.ts'
-import { handle } from '../worker/handler.ts'
 
 import { badge, block, page, UPLOADS } from './helpers/pages.ts'
 import { fakeSite, iosLike } from './helpers/server.ts'
 import { buildZip } from './helpers/zipbuilder.ts'
 
-import type { FakeSite, Hit, SiteOptions } from './helpers/server.ts'
+import type { Hit, SiteOptions } from './helpers/server.ts'
 import type { Item } from './helpers/zipbuilder.ts'
 import type { SubtitleQuery } from '../src/types.ts'
 
@@ -18,10 +17,7 @@ const CREDITS = 'تم تحميل ملفات الترجمة من موقع مير�
 const gintama = JSON.parse(readFileSync(new URL('./fixtures/gintama-names.json', import.meta.url), 'utf8')) as string[]
 
 const ass = (line: string) => `[Script Info]\r\nTitle: test\r\n\r\n[Events]\r\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,${line}\r\n`
-const SERVER = 'https://worker.test'
-// the links go to the unzip server, here it runs in the same process on the site of the latest setup()
-let latest: FakeSite
-const text = async (url: string) => await (await handle(new Request(url), latest.fetch)).text()
+const text = async (url: string) => await (await fetch(url)).text()
 
 // something that does not shrink when zipped, so a zip can be big
 function filler (length: number, seed: number) {
@@ -62,8 +58,7 @@ type Routes = Parameters<typeof fakeSite>[0]
 
 function setup (routes: Routes = kusuriya(), options: SiteOptions = {}, budget?: number, grace?: number) {
   const site = fakeSite(routes, options)
-  latest = site
-  const ext = createExtension(budget, grace, SERVER)
+  const ext = createExtension(budget, grace)
   const q = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({
     anilistId: 195516, malId: 61987, episode: 1, titles: ['Kusuriya no Hitorigoto 3rd Season'], fetch: iosLike(site.fetch), ...extra
   })
@@ -79,7 +74,19 @@ test('episode 1 gives both groups, never the fonts or the credits', async () => 
   assert.match(bodies.get('Arabic - Cr (WEB).ass')!, /cr one/)
   assert.match(bodies.get('Arabic - Celestial Dragons (WEB).ass')!, /cd one/)
   for (const body of bodies.values()) assert.doesNotMatch(body, /ميراي/)
-  assert.ok(got.every(g => g.url.startsWith(`${SERVER}/sub?zip=`)))
+  assert.ok(got.every(g => g.url.startsWith('data:text/x-ssa;charset=utf-8;base64,')))
+})
+
+test('links are made when the answer is handed over, so a remembered answer gets a fresh one', async () => {
+  const site = fakeSite(kusuriya())
+  const made: string[] = []
+  const ext = createExtension(undefined, undefined, (_, format) => `link-${made.push(format)}`)
+  const query: SubtitleQuery = { anilistId: 195516, malId: 61987, episode: 2, titles: ['Kusuriya no Hitorigoto 3rd Season'], fetch: iosLike(site.fetch) }
+
+  assert.deepEqual((await ext.single(query)).map(r => r.url), ['link-1'])
+  const requests = site.hits.length
+  assert.deepEqual((await ext.single(query)).map(r => r.url), ['link-2'])
+  assert.equal(site.hits.length, requests)
 })
 
 test('the language string always ends in a type hayase accepts', async () => {
