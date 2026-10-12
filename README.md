@@ -1,4 +1,6 @@
-<h1 align="center">Mirai Anime</h1>
+<p align="center">
+  <img src="https://miraianime.net/wp-content/uploads/logo4.png" alt="Mirai Anime" width="128">
+</p>
 
 <p align="center">
   Arabic subtitles for anime, right inside Hayase.
