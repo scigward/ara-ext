@@ -741,6 +741,127 @@ async function readPicked(zip, file, clock) {
   return reads.flat();
 }
 
+// src/fonts.ts
+var FAMILY = "Noto Naskh Arabic";
+var FILES = {
+  regular: "https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwvc5krK019_I.ttf",
+  bold: "https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwWslkrK019_I.ttf"
+};
+var DAY = 24 * 60 * 60 * 1e3;
+function fontSource() {
+  let loading;
+  let until = 0;
+  return async (fetchFn) => {
+    if (!loading || Date.now() > until) {
+      const clock = startClock(4e3);
+      const get = async (url) => new Uint8Array(await clock.run((await request(fetchFn, url, clock)).arrayBuffer()));
+      const mine = Promise.all([get(FILES.regular), get(FILES.bold)]).then(([regular, bold]) => ({ regular, bold }));
+      loading = mine;
+      until = Date.now() + DAY;
+      mine.catch(() => {
+        if (loading === mine) loading = void 0;
+      });
+    }
+    try {
+      return await loading;
+    } catch {
+      return void 0;
+    }
+  };
+}
+function uuencode(bytes) {
+  let text = "";
+  for (let i2 = 0; i2 < bytes.length; i2 += 3) {
+    const n = bytes[i2] << 16 | (bytes[i2 + 1] ?? 0) << 8 | (bytes[i2 + 2] ?? 0);
+    const quad = String.fromCharCode(33 + (n >> 18 & 63), 33 + (n >> 12 & 63), 33 + (n >> 6 & 63), 33 + (n & 63));
+    text += quad.slice(0, Math.min(3, bytes.length - i2) + 1);
+  }
+  const lines = [];
+  for (let i2 = 0; i2 < text.length; i2 += 80) lines.push(text.slice(i2, i2 + 80));
+  return lines;
+}
+var embedded = (name, bytes, index) => [`fontname: ${name}_${index}.ttf`, ...uuencode(bytes)];
+function restyle(text, fonts) {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  let section = "";
+  let columns = ["name", "fontname", "fontsize", "primarycolour", "secondarycolour", "outlinecolour", "backcolour", "bold"];
+  let events = -1;
+  let bold = false;
+  let regular = false;
+  const out = lines.map((line, i2) => {
+    const header = /^\s*\[(.+?)\]\s*$/.exec(line);
+    if (header) {
+      section = header[1].toLowerCase();
+      if (section === "events" && events < 0) events = i2;
+      return line;
+    }
+    if (section.includes("styles")) {
+      if (/^format:/i.test(line)) columns = line.slice(line.indexOf(":") + 1).split(",").map((c) => c.trim().toLowerCase());
+      if (!/^style:/i.test(line)) return line;
+      const cells = line.slice(line.indexOf(":") + 1).trimStart().split(",");
+      const font = columns.indexOf("fontname");
+      if (font < 0 || font >= cells.length) return line;
+      cells[font] = FAMILY;
+      const weight = Number(cells[columns.indexOf("bold")]);
+      if (weight && Number.isFinite(weight)) bold = true;
+      else regular = true;
+      return `Style: ${cells.join(",")}`;
+    }
+    return section === "events" && /^dialogue:/i.test(line) ? line.replace(/\\fn[^\\}]+/g, `\\fn${FAMILY}`) : line;
+  });
+  if (!bold && !regular) return void 0;
+  const files = [
+    ...regular ? embedded("NotoNaskhArabic-Regular", fonts.regular, 0) : [],
+    ...bold ? embedded("NotoNaskhArabic-Bold", fonts.bold, 1) : []
+  ];
+  out.splice(events < 0 ? out.length : events, 0, "[Fonts]", ...files, "");
+  return out.join(eol);
+}
+var HEADER = [
+  "[Script Info]",
+  "ScriptType: v4.00+",
+  "WrapStyle: 0",
+  "PlayResX: 1920",
+  "PlayResY: 1080",
+  "ScaledBorderAndShadow: yes",
+  "",
+  "[V4+ Styles]",
+  "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+  // what hayase gives a plain srt, only the font is ours
+  `Style: Default,${FAMILY},52,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2.6,0,2,20,20,46,1`,
+  ""
+];
+var CUE = /(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})/;
+function stamp(h, m, s, ms) {
+  const total = ((Number(h) * 60 + Number(m)) * 60 + Number(s)) * 100 + Math.round(Number(ms.padEnd(3, "0")) / 10);
+  const part = (n) => String(n).padStart(2, "0");
+  return `${Math.floor(total / 36e4)}:${part(Math.floor(total / 6e3) % 60)}:${part(Math.floor(total / 100) % 60)}.${part(total % 100)}`;
+}
+function fromSrt(text, fonts) {
+  const events = [];
+  for (const block of text.split(/\r?\n\s*\r?\n/)) {
+    const lines = block.split(/\r?\n/);
+    const at = lines.findIndex((line) => CUE.test(line));
+    const cue = at < 0 ? null : CUE.exec(lines[at]);
+    const words = lines.slice(at + 1).map((line) => line.trim()).filter(Boolean);
+    if (!cue || !words.length) continue;
+    const spoken = words.join("\\N").replace(/<(\/?)([ibu])>/gi, (_, close, tag) => `{\\${tag.toLowerCase()}${close ? 0 : 1}}`).replace(/<[^>]+>/g, "").replace(/&nbsp;/g, "\\h").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    events.push(`Dialogue: 0,${stamp(cue[1], cue[2], cue[3], cue[4])},${stamp(cue[5], cue[6], cue[7], cue[8])},Default,,0,0,0,,${spoken}`);
+  }
+  if (!events.length) return void 0;
+  const head = [...HEADER, "[Fonts]", ...embedded("NotoNaskhArabic-Regular", fonts.regular, 0), "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"];
+  return [...head, ...events, ""].join("\r\n");
+}
+function withFont(text, format, fonts) {
+  if (format === "srt") {
+    const converted = fromSrt(text, fonts);
+    return converted ? { text: converted, format: "ass" } : { text, format };
+  }
+  if ((format === "ass" || format === "ssa") && !/^\s*\[fonts\]/im.test(text)) return { text: restyle(text, fonts) ?? text, format };
+  return { text, format };
+}
+
 // src/gather.ts
 function gather(tasks, grace) {
   return new Promise((resolve) => {
@@ -871,8 +992,8 @@ function plan(blocks, query, options) {
 }
 
 // src/resolve.ts
-var DAY = 24 * 60 * 60 * 1e3;
-var slugCache = () => cache(DAY, 256);
+var DAY2 = 24 * 60 * 60 * 1e3;
+var slugCache = () => cache(DAY2, 256);
 var LINK = /href="https:\/\/miraianime\.net\/anime\/([^"/]+)\/"/g;
 var idOf = (value) => Number(value) || void 0;
 var squash = (title) => title.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -962,7 +1083,7 @@ async function findSlug(query, clock, slugs) {
     const rows = await search(fetchFn, term, clock);
     found = byIds(rows, query, mal, false) ?? byTitle(rows, query);
   }
-  return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1e3) ?? void 0;
+  return slugs.set(key, found ?? null, found ? DAY2 : 10 * 60 * 1e3) ?? void 0;
 }
 
 // src/extension.ts
@@ -980,7 +1101,7 @@ function named(files, block) {
   });
   return unique(names).map((language, i2) => ({ text: files[i2].text, format: files[i2].format, language }));
 }
-function createExtension(budget = 8e3, grace = 1500, link = toLink) {
+function createExtension(budget = 8e3, grace = 1500, link = toLink, fonts = fontSource()) {
   const slugs = slugCache();
   const listings = cache(10 * MINUTE, 64);
   const zips = cache(30 * MINUTE, 12);
@@ -1022,13 +1143,18 @@ function createExtension(budget = 8e3, grace = 1500, link = toLink) {
       const slug = await findSlug(query, clock, slugs);
       if (!slug) return [];
       const steps = plan(await listing(slug, query.fetch, clock), query, options);
+      const font = steps.length ? fonts(query.fetch) : void 0;
       const { values: results, errors } = await gather(steps.map((step) => fromZip(step, query, clock)), grace);
       if (!results.length) {
         const failure = errors.find((error) => !gone(error));
         if (failure) throw asError(failure);
       }
       const names = unique(results.map((r) => r.language));
-      return results.slice(0, maxFiles(options)).map((r, i2) => ({ url: link(r.text, r.format), language: names[i2] }));
+      const loaded = await font;
+      return results.slice(0, maxFiles(options)).map((r, i2) => {
+        const shown = loaded ? withFont(r.text, r.format, loaded) : r;
+        return { url: link(shown.text, shown.format), language: names[i2].replace(/\.\w+$/, `.${shown.format}`) };
+      });
     }
   };
 }

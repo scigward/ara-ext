@@ -18,6 +18,8 @@ const gintama = JSON.parse(readFileSync(new URL('./fixtures/gintama-names.json',
 
 const ass = (line: string) => `[Script Info]\r\nTitle: test\r\n\r\n[Events]\r\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,${line}\r\n`
 const text = async (url: string) => await (await fetch(url)).text()
+// the fonts come from google, no test goes there
+const noFonts = async () => undefined
 
 // something that does not shrink when zipped, so a zip can be big
 function filler (length: number, seed: number) {
@@ -58,7 +60,7 @@ type Routes = Parameters<typeof fakeSite>[0]
 
 function setup (routes: Routes = kusuriya(), options: SiteOptions = {}, budget?: number, grace?: number) {
   const site = fakeSite(routes, options)
-  const ext = createExtension(budget, grace)
+  const ext = createExtension(budget, grace, undefined, noFonts)
   const q = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({
     anilistId: 195516, malId: 61987, episode: 1, titles: ['Kusuriya no Hitorigoto 3rd Season'], fetch: iosLike(site.fetch), ...extra
   })
@@ -80,7 +82,7 @@ test('episode 1 gives both groups, never the fonts or the credits', async () => 
 test('links are made when the answer is handed over, so a remembered answer gets a fresh one', async () => {
   const site = fakeSite(kusuriya())
   const made: string[] = []
-  const ext = createExtension(undefined, undefined, (_, format) => `link-${made.push(format)}`)
+  const ext = createExtension(undefined, undefined, (_, format) => `link-${made.push(format)}`, noFonts)
   const query: SubtitleQuery = { anilistId: 195516, malId: 61987, episode: 2, titles: ['Kusuriya no Hitorigoto 3rd Season'], fetch: iosLike(site.fetch) }
 
   assert.deepEqual((await ext.single(query)).map(r => r.url), ['link-1'])
@@ -391,6 +393,36 @@ test('maxFiles caps the answer and translators picks who comes first', async () 
   assert.equal((await ext.single(q(), { maxFiles: 1 })).length, 1)
   assert.equal((await ext.single(q(), { translators: 'celestial' }))[0]!.language, 'Arabic - Celestial Dragons (WEB).ass')
   assert.equal((await ext.single(q(), { translators: 'cr, celestial' }))[0]!.language, 'Arabic - Cr (WEB).ass')
+})
+
+test('with a font at hand an ass comes back restyled with it inside, and an srt comes back as an ass', async () => {
+  const fonts = { regular: Uint8Array.from([1, 2, 3]), bold: Uint8Array.from([4, 5, 6]) }
+  // a new one each time, the first would remember the other site's page
+  const withFonts = () => createExtension(undefined, undefined, undefined, async () => fonts)
+
+  const styled = [
+    '[Script Info]', '', '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold',
+    'Style: Default,Adobe Arabic,26,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1',
+    '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,hi', ''
+  ].join('\r\n')
+  const one = single('G-05.zip', badge('05'), [{ name: '[G] Show - 05.ass', data: styled }])
+  const [ass] = await withFonts().single(one.q({ ...query, episode: 5 }))
+  assert.equal(ass!.language, 'Arabic - Cr (WEB).ass')
+  assert.match(await text(ass!.url), /Style: Default,Noto Naskh Arabic,26,[^\r\n]*\r\n\r\n\[Fonts\]\r\nfontname: NotoNaskhArabic-Bold_1\.ttf\r\n[^\r\n]+\r\n\r\n\[Events\]/)
+
+  const two = single('G-06.zip', badge('06'), [{ name: '[G] Show - 06.srt', data: srt }])
+  const [converted] = await withFonts().single(two.q({ ...query, episode: 6 }))
+  assert.equal(converted!.language, 'Arabic - Cr (WEB).ass')
+  assert.match(await text(converted!.url), /^\[Script Info\][\s\S]*\[Fonts\][\s\S]*\[Events\][\s\S]*Dialogue: 0,0:00:01\.00,0:00:02\.50,Default,,0,0,0,,مرحبا/)
+})
+
+test('without a font the files come back as they were', async () => {
+  const one = single('G-05.zip', badge('05'), [{ name: '[G] Show - 05.srt', data: srt }])
+  const [kept] = await createExtension(undefined, undefined, undefined, noFonts).single(one.q({ ...query, episode: 5 }))
+  assert.equal(kept!.language, 'Arabic - Cr (WEB).srt')
+  assert.equal(await text(kept!.url), srt)
 })
 
 test('test() says yes when the site answers with json', async () => {

@@ -1,6 +1,7 @@
 import { cache } from './cache.ts'
 import { startClock } from './clock.ts'
 import { readPicked } from './files.ts'
+import { fontSource, withFont } from './fonts.ts'
 import { gather } from './gather.ts'
 import { getText, HttpError, ORIGIN, request } from './http.ts'
 import { label, unique } from './label.ts'
@@ -14,6 +15,7 @@ import { openZip, SkippedEntry } from './zip.ts'
 import type { Clock } from './clock.ts'
 import type { Block } from './listing.ts'
 import type { Read } from './files.ts'
+import type { FontSource } from './fonts.ts'
 import type { Step } from './plan.ts'
 import type { Format } from './subtitle.ts'
 import type { Options, SubtitleQuery, SubtitleResult } from './types.ts'
@@ -51,7 +53,7 @@ function named (files: Read[], block: Block): Found[] {
 }
 
 // hayase drops a call after 10s, so the default answers before that with what it has
-export function createExtension (budget = 8000, grace = 1500, link = toLink) {
+export function createExtension (budget = 8000, grace = 1500, link = toLink, fonts: FontSource = fontSource()) {
   const slugs = slugCache()
   const listings = cache<Block[]>(10 * MINUTE, 64)
   const zips = cache<Zip>(30 * MINUTE, 12)
@@ -107,6 +109,8 @@ export function createExtension (budget = 8000, grace = 1500, link = toLink) {
       if (!slug) return []
 
       const steps = plan(await listing(slug, query.fetch, clock), query, options)
+      // the font comes while the zips are read, and only when there is something to give it to
+      const font = steps.length ? fonts(query.fetch) : undefined
       const { values: results, errors } = await gather(steps.map(step => fromZip(step, query, clock)), grace)
 
       if (!results.length) {
@@ -116,7 +120,12 @@ export function createExtension (budget = 8000, grace = 1500, link = toLink) {
       }
       // two zips can end up with the same label
       const names = unique(results.map(r => r.language))
-      return results.slice(0, maxFiles(options)).map((r, i) => ({ url: link(r.text, r.format), language: names[i]! }))
+      const loaded = await font
+      return results.slice(0, maxFiles(options)).map((r, i) => {
+        const shown = loaded ? withFont(r.text, r.format, loaded) : r
+        // an srt that became an ass is called one
+        return { url: link(shown.text, shown.format), language: names[i]!.replace(/\.\w+$/, `.${shown.format}`) }
+      })
     }
   }
 }
