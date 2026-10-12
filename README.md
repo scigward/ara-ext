@@ -1,11 +1,12 @@
 <h1 align="center">Mirai Anime</h1>
 
 <p align="center">
-  Arabic subtitles for <a href="https://hayase.watch">Hayase</a>, from <a href="https://miraianime.net">miraianime.net</a>.
+  Arabic subtitles for anime, right inside Hayase.
 </p>
 
-<p align="center" dir="rtl">
-  ترجمات عربية من ميراي أنمي لتطبيق Hayase
+<p align="center">
+  <a href="https://hayase.watch"><img alt="Hayase" src="https://img.shields.io/badge/Hayase-7C5CFF?style=for-the-badge"></a>
+  <a href="https://miraianime.net"><img alt="miraianime.net" src="https://img.shields.io/badge/miraianime.net-FF5C8A?style=for-the-badge"></a>
 </p>
 
 ## Add it
