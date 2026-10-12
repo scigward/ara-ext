@@ -13,7 +13,7 @@ https://raw.githubusercontent.com/scigward/Mirai-ext/main/index.json
 ```
 
 > [!TIP]
-> Then play an episode, the subtitles show up in the player's subtitle menu.
+> The subtitles show up in the player's subtitle menu.
 
 > [!NOTE]
 > No subtitles for an episode? Most likely Mirai Anime doesn't have one for it yet.
