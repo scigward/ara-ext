@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { decodeText, detectFormat, formatOf, toDataUrl } from '../src/subtitle.ts'
+import { decodeText, detectFormat, formatOf } from '../src/subtitle.ts'
 
 const utf16 = (s: string, bom: number[]) => Uint8Array.from([...bom, ...[...s].flatMap(c => bom[0] === 0xff ? [c.charCodeAt(0) & 0xff, c.charCodeAt(0) >> 8] : [c.charCodeAt(0) >> 8, c.charCodeAt(0) & 0xff])])
 
@@ -40,11 +40,4 @@ test('credits and other text are not subtitles', () => {
   assert.equal(detectFormat('تم تحميل ملفات الترجمة من موقع ميراي انمي miraianime.net\n\nhttps://miraianime.net'), undefined)
   assert.equal(detectFormat('just some text'), undefined)
   assert.equal(detectFormat(''), undefined)
-})
-
-test('the data url opens through fetch and gives the same text back', async () => {
-  const original = '[Script Info]\r\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,مرحبا بالعالم\r\n'.repeat(5000)
-  const url = toDataUrl(original, 'ass')
-  assert.match(url, /^data:text\/x-ssa;charset=utf-8;base64,/)
-  assert.equal(await (await fetch(url)).text(), original)
 })

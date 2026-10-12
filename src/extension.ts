@@ -8,6 +8,7 @@ import { parseListing } from './listing.ts'
 import { pickFiles } from './names.ts'
 import { maxFiles, plan } from './plan.ts'
 import { findSlug, slugCache } from './resolve.ts'
+import { SERVER, serveUrl } from './serve.ts'
 import { openZip, SkippedEntry } from './zip.ts'
 
 import type { Clock } from './clock.ts'
@@ -42,7 +43,7 @@ function named (files: Read[], block: Block): SubtitleResult[] {
 }
 
 // hayase drops a call after 10s, so the default answers before that with what it has
-export function createExtension (budget = 8000, grace = 1500) {
+export function createExtension (budget = 8000, grace = 1500, server = SERVER) {
   const slugs = slugCache()
   const listings = cache<Block[]>(10 * MINUTE, 64)
   const zips = cache<Zip>(30 * MINUTE, 12)
@@ -70,7 +71,8 @@ export function createExtension (budget = 8000, grace = 1500) {
     const zip = zips.get(block.zip) ?? zips.set(block.zip, await openZip(query.fetch, block.zip, clock, tail))
     const picked = pickFiles(zip.entries.map(e => e.name), episodes, lone, span)
 
-    const reads = await Promise.allSettled(picked.map(file => readPicked(zip, file, clock)))
+    const serve = (file: string, inner?: string) => serveUrl(server, block.zip, file, inner)
+    const reads = await Promise.allSettled(picked.map(file => readPicked(zip, file, clock, serve)))
     const files = reads.flatMap(r => r.status === 'fulfilled' ? r.value : [])
     // too big or locked stays that way, nothing to retry or report
     const failed = reads.find((r): r is PromiseRejectedResult => r.status === 'rejected' && !(r.reason instanceof SkippedEntry))

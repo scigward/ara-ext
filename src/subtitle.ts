@@ -2,14 +2,6 @@ export type Format = 'ass' | 'ssa' | 'srt' | 'vtt' | 'sub'
 
 export const FORMATS: readonly Format[] = ['ass', 'ssa', 'srt', 'vtt', 'sub']
 
-const MIME: Record<Format, string> = {
-  ass: 'text/x-ssa',
-  ssa: 'text/x-ssa',
-  srt: 'application/x-subrip',
-  vtt: 'text/vtt',
-  sub: 'text/plain'
-}
-
 export function formatOf (fileName: string): Format | undefined {
   const ext = fileName.slice(fileName.lastIndexOf('.') + 1).toLowerCase()
   return FORMATS.find(f => f === ext)
@@ -36,13 +28,4 @@ export function detectFormat (text: string): Format | undefined {
   if (/^\s*WEBVTT/.test(text) && TIMES.test(text)) return 'vtt'
   if (TIMES.test(text)) return 'srt'
   if (/^[{[]\d+[}\]][{[]\d+[}\]]/m.test(text)) return 'sub'
-}
-
-// the interface (fetch) and the ios app (urlsession) both open a data url without help
-export function toDataUrl (text: string, format: Format): string {
-  const bytes = new TextEncoder().encode(text)
-  let binary = ''
-  // in chunks, one big spread blows the stack
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return `data:${MIME[format]};charset=utf-8;base64,${btoa(binary)}`
 }
