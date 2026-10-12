@@ -388,11 +388,9 @@ test('a site that is too slow to even list is an error the user can read', async
   await assert.rejects(ext.single(q()), /took too long/)
 })
 
-test('maxFiles caps the answer and translators picks who comes first', async () => {
+test('maxFiles caps the answer', async () => {
   const { ext, q } = setup()
   assert.equal((await ext.single(q(), { maxFiles: 1 })).length, 1)
-  assert.equal((await ext.single(q(), { translators: 'celestial' }))[0]!.language, 'Arabic - Celestial Dragons (WEB).ass')
-  assert.equal((await ext.single(q(), { translators: 'cr, celestial' }))[0]!.language, 'Arabic - Cr (WEB).ass')
 })
 
 test('with a font at hand an ass comes back restyled with it inside, and an srt comes back as an ass', async () => {
@@ -416,6 +414,21 @@ test('with a font at hand an ass comes back restyled with it inside, and an srt 
   const [converted] = await withFonts().single(two.q({ ...query, episode: 6 }))
   assert.equal(converted!.language, 'Arabic - Cr (WEB).ass')
   assert.match(await text(converted!.url), /^\[Script Info\][\s\S]*\[Fonts\][\s\S]*\[Events\][\s\S]*Dialogue: 0,0:00:01\.00,0:00:02\.50,Default,,0,0,0,,مرحبا/)
+})
+
+test('with the fonts setting off the files come back as they were, font or not', async () => {
+  let asked = 0
+  const one = single('G-05.zip', badge('05'), [{ name: '[G] Show - 05.srt', data: srt }])
+  const ext = createExtension(undefined, undefined, undefined, async () => { asked++; return { regular: Uint8Array.from([1]), bold: Uint8Array.from([2]) } })
+  const [kept] = await ext.single(one.q({ ...query, episode: 5 }), { fonts: false })
+  assert.equal(kept!.language, 'Arabic - Cr (WEB).srt')
+  assert.equal(await text(kept!.url), srt)
+  // the font is not even fetched
+  assert.equal(asked, 0)
+  // and on again it is
+  const [changed] = await ext.single(one.q({ ...query, episode: 5 }), { fonts: true })
+  assert.equal(changed!.language, 'Arabic - Cr (WEB).ass')
+  assert.equal(asked, 1)
 })
 
 test('without a font the files come back as they were', async () => {

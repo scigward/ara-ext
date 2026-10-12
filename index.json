@@ -3,7 +3,7 @@
     "manifestVersion": 2,
     "deprecated": false,
     "name": "Mirai Anime",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "id": "miraianime",
     "type": "subtitle",
     "accuracy": "high",
@@ -14,15 +14,15 @@
     "update": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/index.json",
     "code": "https://raw.githubusercontent.com/scigward/Mirai-ext/main/dist/mirai.js",
     "options": {
-      "translators": {
-        "type": "string",
-        "description": "Translators you like best, comma separated, the first one found comes first (for example: Cr, Celestial Dragons)",
-        "default": ""
-      },
       "maxFiles": {
         "type": "number",
         "description": "Most subtitle files to give for one episode",
         "default": 3
+      },
+      "fonts": {
+        "type": "boolean",
+        "description": "Give the subtitles a built-in Arabic font in place of their own. Turn it off if your device already has the fonts they use",
+        "default": true
       }
     }
   }

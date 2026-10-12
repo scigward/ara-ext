@@ -36,13 +36,6 @@ export function plan (blocks: Block[], query: SubtitleQuery, options: Options): 
     steps = blocks.filter(block => !block.episodes.length).map(block => ({ block, episodes, lone: true }))
   }
 
-  const prefer = String(options.translators ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-  const rank = ({ block }: Step) => {
-    const at = prefer.findIndex(name => block.translators.some(t => t.toLowerCase().includes(name)))
-    return at < 0 ? prefer.length : at
-  }
-
-  // sort is stable so the page order survives
-  // two spares in case a zip is gone or has nothing
-  return steps.sort((a, b) => rank(a) - rank(b)).slice(0, maxFiles(options) + 2)
+  // page order, plus two spares in case a zip is gone or has nothing
+  return steps.slice(0, maxFiles(options) + 2)
 }

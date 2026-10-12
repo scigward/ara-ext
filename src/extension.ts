@@ -109,8 +109,8 @@ export function createExtension (budget = 8000, grace = 1500, link = toLink, fon
       if (!slug) return []
 
       const steps = plan(await listing(slug, query.fetch, clock), query, options)
-      // the font comes while the zips are read, and only when there is something to give it to
-      const font = steps.length ? fonts(query.fetch) : undefined
+      // the font comes while the zips are read, and only when it is wanted and there is something to give it to
+      const font = steps.length && options.fonts !== false ? fonts(query.fetch) : undefined
       const { values: results, errors } = await gather(steps.map(step => fromZip(step, query, clock)), grace)
 
       if (!results.length) {

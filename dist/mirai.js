@@ -983,12 +983,7 @@ function plan(blocks, query, options) {
   if (!steps.length && (query.episodeCount === 1 || query.media?.format === "MOVIE")) {
     steps = blocks.filter((block) => !block.episodes.length).map((block) => ({ block, episodes, lone: true }));
   }
-  const prefer = String(options.translators ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const rank = ({ block }) => {
-    const at = prefer.findIndex((name) => block.translators.some((t) => t.toLowerCase().includes(name)));
-    return at < 0 ? prefer.length : at;
-  };
-  return steps.sort((a, b) => rank(a) - rank(b)).slice(0, maxFiles(options) + 2);
+  return steps.slice(0, maxFiles(options) + 2);
 }
 
 // src/resolve.ts
@@ -1143,7 +1138,7 @@ function createExtension(budget = 8e3, grace = 1500, link = toLink, fonts = font
       const slug = await findSlug(query, clock, slugs);
       if (!slug) return [];
       const steps = plan(await listing(slug, query.fetch, clock), query, options);
-      const font = steps.length ? fonts(query.fetch) : void 0;
+      const font = steps.length && options.fonts !== false ? fonts(query.fetch) : void 0;
       const { values: results, errors } = await gather(steps.map((step) => fromZip(step, query, clock)), grace);
       if (!results.length) {
         const failure = errors.find((error) => !gone(error));
