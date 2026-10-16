@@ -30,12 +30,11 @@ jobs:
 
   deploy:
     name: deploy
-    # only main, only after the checks. the cloudflare secrets sit in the production environment,
-    # so a pull request or another branch can never read them
+    # only main, only after the checks. the cloudflare secrets are plain repository secrets,
+    # which a pull request from a fork never gets. (environment secrets stop working on a free private repo)
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
     concurrency:
       group: deploy
       cancel-in-progress: false
