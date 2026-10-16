@@ -75,6 +75,11 @@ test('both finding nothing is not an error, and is remembered', async () => {
   assert.equal(site.hits.length, asked)
 })
 
+test('a rest answer that is not json is a plain error, not a syntax error', async () => {
+  const { find } = setup({ [searchUrl(TITLE)]: '<html>log in</html>' })
+  await assert.rejects(find({ malId: undefined }), /^Error: mirai answered something unexpected$/)
+})
+
 test('a title match is read from the rows already fetched, not asked for again', async () => {
   const { find, site } = setup({ [searchUrl(TITLE)]: json(row('kusuriya-3', {}), row('other', {}, 'Something Else')) })
   assert.equal(await find({ malId: undefined }), 'kusuriya-3')

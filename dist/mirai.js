@@ -26,6 +26,8 @@ function cache(ms, max2 = 64) {
 }
 
 // src/clock.ts
+var MINUTE = 60 * 1e3;
+var DAY = 24 * 60 * MINUTE;
 var noClock = { left: () => Infinity, run: (work) => work };
 function startClock(ms) {
   const end = Date.now() + ms;
@@ -77,7 +79,7 @@ function toDataUrl(text, format) {
 }
 function toBlobUrl(text, format) {
   const url = URL.createObjectURL(new Blob([text], { type: `${MIME[format]};charset=utf-8` }));
-  const timer = setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1e3);
+  const timer = setTimeout(() => URL.revokeObjectURL(url), 5 * MINUTE);
   timer.unref?.();
   return url;
 }
@@ -604,6 +606,7 @@ var HttpError = class extends Error {
     this.status = status;
   }
 };
+var asError = (reason) => reason instanceof Error ? reason : new Error(String(reason));
 async function request(fetchFn, url, clock, headers) {
   const res = await clock.run(fetchFn(url, headers ? { headers } : void 0));
   if (res.ok) return res;
@@ -617,6 +620,14 @@ async function getText(fetchFn, url, clock) {
   const res = await request(fetchFn, url, clock);
   return await clock.run(res.text());
 }
+async function getJson(fetchFn, url, clock) {
+  const text = await getText(fetchFn, url, clock);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("mirai answered something unexpected");
+  }
+}
 
 // src/zip.ts
 var SkippedEntry = class extends Error {
@@ -625,6 +636,10 @@ var SkippedEntry = class extends Error {
     this.name = "SkippedEntry";
   }
 };
+var END_RECORD = 101010256;
+var DIRECTORY_ENTRY = 33639248;
+var LOCAL_HEADER = 67324752;
+var ZIP64 = 4294967295;
 var TAIL = 64 * 1024;
 var SLACK = 512;
 var MAX_SIZE = 12 * 1024 * 1024;
@@ -654,7 +669,7 @@ function decodeName(raw) {
 function findEnd(buf) {
   const lowest = Math.max(0, buf.length - 22 - 65535);
   for (let i2 = buf.length - 22; i2 >= lowest; i2--) {
-    if (u32(buf, i2) === 101010256 && i2 + 22 + u162(buf, i2 + 20) <= buf.length) return i2;
+    if (u32(buf, i2) === END_RECORD && i2 + 22 + u162(buf, i2 + 20) <= buf.length) return i2;
   }
   throw new Error("that file is not a zip");
 }
@@ -662,11 +677,11 @@ function parseDirectory(dir, count) {
   const entries = [];
   let p = 0;
   for (let i2 = 0; i2 < count && p + 46 <= dir.length; i2++) {
-    if (u32(dir, p) !== 33639248) break;
+    if (u32(dir, p) !== DIRECTORY_ENTRY) break;
     const packed = u32(dir, p + 20);
     const size = u32(dir, p + 24);
     const offset = u32(dir, p + 42);
-    if (packed === 4294967295 || size === 4294967295 || offset === 4294967295) throw new Error("zip64 files are not supported");
+    if (packed === ZIP64 || size === ZIP64 || offset === ZIP64) throw new Error("zip64 files are not supported");
     const nameLength = u162(dir, p + 28);
     entries.push({
       name: decodeName(dir.subarray(p + 46, p + 46 + nameLength)),
@@ -687,7 +702,7 @@ async function build(tail, whole, outside, clock) {
   const count = u162(tail, end + 10);
   const dirSize = u32(tail, end + 12);
   const dirOffset = u32(tail, end + 16);
-  if (count === 65535 || dirSize === 4294967295 || dirOffset === 4294967295) throw new Error("zip64 files are not supported");
+  if (count === 65535 || dirSize === ZIP64 || dirOffset === ZIP64) throw new Error("zip64 files are not supported");
   if (dirSize > MAX_DIRECTORY) throw new Error("that zip has a silly amount of files");
   const base = whole ? 0 : dirOffset + dirSize - end;
   const grab = (start, length, clock2) => start >= base ? Promise.resolve(tail.subarray(start - base, start - base + length)) : outside(start, length, clock2);
@@ -698,7 +713,7 @@ async function build(tail, whole, outside, clock) {
       if (entry.flags & 1) throw new SkippedEntry(`${entry.name} is encrypted`);
       if (entry.size > MAX_SIZE || entry.packed > MAX_PACKED) throw new SkippedEntry(`${entry.name} is too big`);
       let buf = await grab(entry.offset, 30 + entry.nameLength + SLACK + entry.packed, clock2);
-      if (buf.length < 30 || u32(buf, 0) !== 67324752) throw new Error(`${entry.name} has a broken header`);
+      if (buf.length < 30 || u32(buf, 0) !== LOCAL_HEADER) throw new Error(`${entry.name} has a broken header`);
       const dataStart = 30 + u162(buf, 26) + u162(buf, 28);
       if (buf.length < dataStart + entry.packed) buf = await grab(entry.offset, dataStart + entry.packed, clock2);
       if (buf.length < dataStart + entry.packed) throw new Error(`${entry.name} is cut short`);
@@ -747,7 +762,6 @@ var FILES = {
   regular: "https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwvc5krK019_I.ttf",
   bold: "https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwWslkrK019_I.ttf"
 };
-var DAY = 24 * 60 * 60 * 1e3;
 function fontSource() {
   let loading;
   let until = 0;
@@ -987,8 +1001,7 @@ function plan(blocks, query, options) {
 }
 
 // src/resolve.ts
-var DAY2 = 24 * 60 * 60 * 1e3;
-var slugCache = () => cache(DAY2, 256);
+var slugCache = () => cache(DAY, 256);
 var LINK = /href="https:\/\/miraianime\.net\/anime\/([^"/]+)\/"/g;
 var idOf = (value) => Number(value) || void 0;
 var squash = (title) => title.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -997,7 +1010,7 @@ async function byMal(fetchFn, mal, clock) {
   return [...new Set([...html.matchAll(LINK)].map((m) => m[1]))];
 }
 async function rest(fetchFn, params, clock) {
-  const data = JSON.parse(await getText(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock));
+  const data = await getJson(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock);
   return Array.isArray(data) ? data : [];
 }
 var search = (fetchFn, term, clock) => rest(fetchFn, `search=${encodeURIComponent(term)}&per_page=10`, clock);
@@ -1044,7 +1057,7 @@ function firstFound(lookups) {
         if (--open) return;
         const failure = failures.find(Boolean);
         if (!failure) resolve(void 0);
-        else reject(failure instanceof Error ? failure : new Error(String(failure)));
+        else reject(asError(failure));
       });
     });
   });
@@ -1078,13 +1091,11 @@ async function findSlug(query, clock, slugs) {
     const rows = await search(fetchFn, term, clock);
     found = byIds(rows, query, mal, false) ?? byTitle(rows, query);
   }
-  return slugs.set(key, found ?? null, found ? DAY2 : 10 * 60 * 1e3) ?? void 0;
+  return slugs.set(key, found ?? null, found ? DAY : 10 * MINUTE) ?? void 0;
 }
 
 // src/extension.ts
-var MINUTE = 60 * 1e3;
 var WHOLE = 300 * 1024;
-var asError = (reason) => reason instanceof Error ? reason : new Error(String(reason));
 var gone = (error) => error instanceof HttpError && (error.status === 404 || error.status === 410);
 var urlSafe = (slug) => /%[\da-f]{2}/i.test(slug) ? slug : encodeURIComponent(slug);
 function named(files, block) {
@@ -1129,8 +1140,7 @@ function createExtension(budget = 8e3, grace = 1500, link = toLink, fonts = font
     url: ORIGIN,
     async test() {
       const clock = startClock(4e3);
-      const res = await request(fetch, `${ORIGIN}/wp-json/wp/v2/anime?per_page=1&_fields=id`, clock);
-      if (!Array.isArray(await clock.run(res.json()))) throw new Error("mirai answered something unexpected");
+      if (!Array.isArray(await getJson(fetch, `${ORIGIN}/wp-json/wp/v2/anime?per_page=1&_fields=id`, clock))) throw new Error("mirai answered something unexpected");
       return true;
     },
     async single(query, options = {}) {

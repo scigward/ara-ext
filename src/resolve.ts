@@ -1,5 +1,6 @@
 import { cache } from './cache.ts'
-import { getText, ORIGIN } from './http.ts'
+import { DAY, MINUTE } from './clock.ts'
+import { asError, getJson, getText, ORIGIN } from './http.ts'
 import { decodeEntities } from './listing.ts'
 
 import type { Cache } from './cache.ts'
@@ -11,8 +12,6 @@ interface RestAnime {
   title?: { rendered?: string }
   acf?: { external_links?: Record<string, unknown> }
 }
-
-const DAY = 24 * 60 * 60 * 1000
 
 // null counts as an answer: the site doesn't have it, don't ask again for a while
 export type Slugs = Cache<string | null>
@@ -31,7 +30,7 @@ async function byMal (fetchFn: typeof fetch, mal: number, clock: Clock): Promise
 }
 
 async function rest (fetchFn: typeof fetch, params: string, clock: Clock): Promise<RestAnime[]> {
-  const data: unknown = JSON.parse(await getText(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock))
+  const data = await getJson(fetchFn, `${ORIGIN}/wp-json/wp/v2/anime?${params}&_fields=slug,title,acf.external_links`, clock)
   return Array.isArray(data) ? data as RestAnime[] : []
 }
 
@@ -50,9 +49,8 @@ function searchTerms (titles: string[]): string[] {
   return terms.slice(0, 4)
 }
 
-// ids are exact, they beat any title. the candidate that agrees on the most ids wins.
-// strict: when we have a mal id the site's mal id has to agree too, an anilist id alone has been
-// seen on the wrong entry (a special that carries its series' id)
+// ids beat titles, the one that agrees on the most ids wins. strict wants the site's mal id to agree too when
+// we have one: an anilist id alone was seen on the wrong entry (a special carrying its series' id)
 function byIds (candidates: RestAnime[], query: SubtitleQuery, mal: number | undefined, strict: boolean): string | undefined {
   let best: { slug: string, score: number } | undefined
 
@@ -91,7 +89,7 @@ function firstFound (lookups: Array<Promise<string | undefined>>): Promise<strin
           if (--open) return
           const failure = failures.find(Boolean)
           if (!failure) resolve(undefined)
-          else reject(failure instanceof Error ? failure : new Error(String(failure)))
+          else reject(asError(failure))
         })
     })
   })
@@ -136,5 +134,5 @@ export async function findSlug (query: SubtitleQuery, clock: Clock, slugs: Slugs
   }
 
   // misses are remembered shorter, the site may add it tomorrow
-  return slugs.set(key, found ?? null, found ? DAY : 10 * 60 * 1000) ?? undefined
+  return slugs.set(key, found ?? null, found ? DAY : 10 * MINUTE) ?? undefined
 }

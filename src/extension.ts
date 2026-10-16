@@ -1,9 +1,9 @@
 import { cache } from './cache.ts'
-import { startClock } from './clock.ts'
+import { MINUTE, startClock } from './clock.ts'
 import { readPicked } from './files.ts'
 import { fontSource, withFont } from './fonts.ts'
 import { gather } from './gather.ts'
-import { getText, HttpError, ORIGIN, request } from './http.ts'
+import { asError, getJson, getText, HttpError, ORIGIN } from './http.ts'
 import { label, unique } from './label.ts'
 import { parseListing } from './listing.ts'
 import { pickFiles } from './names.ts'
@@ -28,11 +28,9 @@ interface Found {
   language: string
 }
 
-const MINUTE = 60 * 1000
 // a zip this small comes whole in one request, a round trip costs more than the extra bytes
 const WHOLE = 300 * 1024
 
-const asError = (reason: unknown) => reason instanceof Error ? reason : new Error(String(reason))
 const gone = (error: unknown) => error instanceof HttpError && (error.status === 404 || error.status === 410)
 
 // the page gives slugs percent encoded, the rest api gives them plain
@@ -97,8 +95,7 @@ export function createExtension (budget = 8000, grace = 1500, link = toLink, fon
 
     async test (): Promise<boolean> {
       const clock = startClock(4000)
-      const res = await request(fetch, `${ORIGIN}/wp-json/wp/v2/anime?per_page=1&_fields=id`, clock)
-      if (!Array.isArray(await clock.run(res.json()))) throw new Error('mirai answered something unexpected')
+      if (!Array.isArray(await getJson(fetch, `${ORIGIN}/wp-json/wp/v2/anime?per_page=1&_fields=id`, clock))) throw new Error('mirai answered something unexpected')
       return true
     },
 

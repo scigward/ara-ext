@@ -30,6 +30,12 @@ export class SkippedEntry extends Error {
   }
 }
 
+// what starts each kind of record, and the all ones that a zip64 file puts where the real number would not fit
+const END_RECORD = 0x06054b50
+const DIRECTORY_ENTRY = 0x02014b50
+const LOCAL_HEADER = 0x04034b50
+const ZIP64 = 0xffffffff
+
 const TAIL = 64 * 1024
 // a local header can have a longer extra field than the directory's, leave room
 const SLACK = 512
@@ -68,7 +74,7 @@ function decodeName (raw: Uint8Array): string {
 function findEnd (buf: Uint8Array): number {
   const lowest = Math.max(0, buf.length - 22 - 0xffff)
   for (let i = buf.length - 22; i >= lowest; i--) {
-    if (u32(buf, i) === 0x06054b50 && i + 22 + u16(buf, i + 20) <= buf.length) return i
+    if (u32(buf, i) === END_RECORD && i + 22 + u16(buf, i + 20) <= buf.length) return i
   }
   throw new Error('that file is not a zip')
 }
@@ -77,11 +83,11 @@ function parseDirectory (dir: Uint8Array, count: number): ZipEntry[] {
   const entries: ZipEntry[] = []
   let p = 0
   for (let i = 0; i < count && p + 46 <= dir.length; i++) {
-    if (u32(dir, p) !== 0x02014b50) break
+    if (u32(dir, p) !== DIRECTORY_ENTRY) break
     const packed = u32(dir, p + 20)
     const size = u32(dir, p + 24)
     const offset = u32(dir, p + 42)
-    if (packed === 0xffffffff || size === 0xffffffff || offset === 0xffffffff) throw new Error('zip64 files are not supported')
+    if (packed === ZIP64 || size === ZIP64 || offset === ZIP64) throw new Error('zip64 files are not supported')
 
     const nameLength = u16(dir, p + 28)
     entries.push({
@@ -107,7 +113,7 @@ async function build (tail: Uint8Array, whole: boolean, outside: Outside, clock:
   const count = u16(tail, end + 10)
   const dirSize = u32(tail, end + 12)
   const dirOffset = u32(tail, end + 16)
-  if (count === 0xffff || dirSize === 0xffffffff || dirOffset === 0xffffffff) throw new Error('zip64 files are not supported')
+  if (count === 0xffff || dirSize === ZIP64 || dirOffset === ZIP64) throw new Error('zip64 files are not supported')
   if (dirSize > MAX_DIRECTORY) throw new Error('that zip has a silly amount of files')
 
   // where tail[0] is in the real file: the directory ends where the end record starts
@@ -126,7 +132,7 @@ async function build (tail: Uint8Array, whole: boolean, outside: Outside, clock:
       if (entry.size > MAX_SIZE || entry.packed > MAX_PACKED) throw new SkippedEntry(`${entry.name} is too big`)
 
       let buf = await grab(entry.offset, 30 + entry.nameLength + SLACK + entry.packed, clock)
-      if (buf.length < 30 || u32(buf, 0) !== 0x04034b50) throw new Error(`${entry.name} has a broken header`)
+      if (buf.length < 30 || u32(buf, 0) !== LOCAL_HEADER) throw new Error(`${entry.name} has a broken header`)
       const dataStart = 30 + u16(buf, 26) + u16(buf, 28)
       if (buf.length < dataStart + entry.packed) buf = await grab(entry.offset, dataStart + entry.packed, clock)
       if (buf.length < dataStart + entry.packed) throw new Error(`${entry.name} is cut short`)

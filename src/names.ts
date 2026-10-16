@@ -182,9 +182,7 @@ export interface Picked extends Described {
 }
 
 // the files of one zip for this episode, best copy of each (format, then version).
-// episodes: what hayase means, then the series-wide number as a fallback.
-// lone: the page says this zip is for this one episode, names needn't prove it.
-// span: the range the page lists for the zip
+// episodes, lone and span are what a plan step carries, see plan.ts
 export function pickFiles (paths: string[], episodes: Array<number | undefined>, lone: boolean, span?: Range): Picked[] {
   const all = paths.map(describe).filter((d): d is Described => !!d)
   const mixed = new Set(all.map(d => d.group).filter(Boolean)).size > 1

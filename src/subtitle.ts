@@ -1,3 +1,5 @@
+import { MINUTE } from './clock.ts'
+
 export type Format = 'ass' | 'ssa' | 'srt' | 'vtt' | 'sub'
 
 export const FORMATS: readonly Format[] = ['ass', 'ssa', 'srt', 'vtt', 'sub']
@@ -51,7 +53,7 @@ export function toDataUrl (text: string, format: Format): string {
 export function toBlobUrl (text: string, format: Format): string {
   const url = URL.createObjectURL(new Blob([text], { type: `${MIME[format]};charset=utf-8` }))
   // hayase fetches it the moment we answer, nobody else would ever let go of it
-  const timer = setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
+  const timer = setTimeout(() => URL.revokeObjectURL(url), 5 * MINUTE)
   ;(timer as { unref?: () => void }).unref?.()
   return url
 }

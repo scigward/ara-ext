@@ -1,4 +1,4 @@
-import { startClock } from './clock.ts'
+import { DAY, startClock } from './clock.ts'
 import { request } from './http.ts'
 
 import type { Format } from './subtitle.ts'
@@ -13,8 +13,6 @@ const FILES = {
   regular: 'https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwvc5krK019_I.ttf',
   bold: 'https://fonts.gstatic.com/s/notonaskharabic/v33/RrQ5bpV-9Dd1b1OAGA6M9PkyDuVBePeKNaxcsss0Y7bwWslkrK019_I.ttf'
 }
-
-const DAY = 24 * 60 * 60 * 1000
 
 export interface Fonts {
   regular: Uint8Array
