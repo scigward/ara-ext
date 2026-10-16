@@ -8,6 +8,12 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # typescript 7 fails our check for now, and the node types have to stay on the node we run (22)
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   # same for the actions, which are pinned by commit
   - package-ecosystem: github-actions
     directory: /
