@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # versions are pinned exactly, so this is the only way they ever move.
+  # the cooldown keeps a brand new release out for a week, so a bad one gets caught by others first
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  # same for the actions, which are pinned by commit
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
