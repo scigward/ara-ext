@@ -1,5 +1,7 @@
 node_modules/
 local/
+public/
+.wrangler/
 .env
 *.log
 .DS_Store

@@ -4,7 +4,7 @@ import { test } from 'node:test'
 
 // hayase imports the file from a blob, in a worker or in a hidden webview on ios 16 and up.
 // these look at the built file the way those places would
-const built = readFileSync(new URL('../dist/mirai.js', import.meta.url), 'utf8')
+const built = readFileSync(new URL('../public/mirai.js', import.meta.url), 'utf8')
 
 test('no regex lookbehind, safari only has it from 16.4 and a module that has one does not load', () => {
   assert.doesNotMatch(built, /\(\?<[=!]/)

@@ -1,0 +1,8 @@
+# every file here is only fetched by hayase, never opened in a page, so lock the browser down
+# the cors line is for hayase itself, it fetches these from its own origin
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; frame-ancestors 'none'
+  Access-Control-Allow-Origin: *

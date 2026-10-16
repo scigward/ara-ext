@@ -11,8 +11,10 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "pretest": "npm run build",
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "verify-live": "node scripts/verify-live.ts",
     "smoke": "node scripts/smoke.ts"
   },
   "devDependencies": {
@@ -21,6 +23,7 @@
     "eslint": "9.39.5",
     "fflate": "0.8.3",
     "neostandard": "0.14.0",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "wrangler": "4.151.1"
   }
 }

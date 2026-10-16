@@ -29,11 +29,10 @@ test('the manifest has what hayase insists on when importing', () => {
   assert.equal(entry!.manifestVersion, 2)
 })
 
-test('update and code point at this repo, the icon is the favicon of the site itself', () => {
+test('update and code point at the pages site, the icon is the favicon of the site itself', () => {
   const [entry] = manifest
-  for (const url of [entry!.update, entry!.code]) assert.match(url, /^https:\/\/raw\.githubusercontent\.com\/scigward\/Mirai-ext\/main\//)
-  assert.ok(entry!.update.endsWith('/index.json'))
-  assert.ok(entry!.code.endsWith('/dist/mirai.js'))
+  assert.equal(entry!.update, 'https://mirai-ext.pages.dev/index.json')
+  assert.equal(entry!.code, 'https://mirai-ext.pages.dev/mirai.js')
   // no artwork of our own in this repo
   assert.match(entry!.icon, /^https:\/\/miraianime\.net\/wp-content\/uploads\/[^/]+\.png$/)
 })
@@ -47,11 +46,11 @@ test('the version lives in index.json only, so bumping it never needs anything e
   // hayase updates the extension when this changes. package.json and the built file carry no version of their own
   assert.match(manifest[0]!.version, /^\d+\.\d+\.\d+$/)
   assert.equal('version' in (JSON.parse(read('../package.json')) as object), false)
-  assert.doesNotMatch(read('../dist/mirai.js').split('\n')[0]!, /\d+\.\d+\.\d+/)
+  assert.doesNotMatch(read('../public/mirai.js').split('\n')[0]!, /\d+\.\d+\.\d+/)
 })
 
 test('the built file the manifest points at exists', () => {
-  assert.ok(existsSync(new URL('../dist/mirai.js', import.meta.url)))
+  assert.ok(existsSync(new URL('../public/mirai.js', import.meta.url)))
 })
 
 test('options are typed like hayase expects', () => {
