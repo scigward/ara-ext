@@ -78,6 +78,49 @@ test('a movie takes any release', async () => {
   assert.deepEqual(results.map(r => r.language), ['Arabic - SubSource (Mugen.Train.2020.1080p.BluRay).srt'])
 })
 
+test('packs come first and give the episode out of the season, kept for the next one', async () => {
+  const season = (who: string) => buildZip([4, 5, 6].map(n => ({ name: `[${who}] Demon Slayer - 0${n}.ass`, data: srt(`${who} ${n}`) })))
+  const site = fakeSite({
+    ...routes(),
+    [ANIZIP]: JSON.stringify({ episodes: { 5: { seasonNumber: 3, episodeNumber: 5 }, 6: { seasonNumber: 3, episodeNumber: 6 } } }),
+    [`${API}/subtitles?movieId=7&language=arabic&limit=100&sort=popular`]: JSON.stringify({
+      data: [
+        { subtitleId: 20, releaseInfo: 'Demon Slayer - 06' },
+        { subtitleId: 21, releaseInfo: ['[Rhythm] Demon Slayer [12 ~ 24][BD]'] },
+        { subtitleId: 22, releaseInfo: 'Demon Slayer - 05', contributors: [{ displayname: 'Single' }] },
+        { subtitleId: 23, releaseInfo: 'Demon Slayer EP01A+B ~ 11End', contributors: [{ displayname: 'Kurd' }] },
+        { subtitleId: 24, releaseInfo: ['Demon Slayer all season [1080p]'], contributors: [{ displayname: 'Whole' }] },
+        { subtitleId: 25, releaseInfo: 'Demon Slayer - Memory Snow' }
+      ]
+    }),
+    [`${API}/subtitles/22/download`]: buildZip([{ name: 'Demon Slayer - 05.srt', data: srt('single') }]),
+    [`${API}/subtitles/23/download`]: season('Kurd'),
+    [`${API}/subtitles/24/download`]: season('Whole'),
+    [`${API}/subtitles/25/download`]: buildZip([{ name: 'Demon Slayer - Memory Snow.ass', data: srt('special') }])
+  })
+  const { query, urls } = setup(site)
+  const fifth = await subsource.single(query({ episode: 5 }), { subsourceKey: KEY, fonts: false, maxFiles: 8 })
+  assert.deepEqual(fifth.map(r => r.language), ['Arabic - Kurd (Demon Slayer EP01A+B ~ 11End).srt', 'Arabic - Whole (Demon Slayer all season [1080p]).srt', 'Arabic - Single (Demon Slayer - 05).srt'])
+  assert.deepEqual(await Promise.all(fifth.map(async r => await (await fetch(r.url)).text())), [srt('Kurd 5'), srt('Whole 5'), srt('single')])
+  assert.ok(!urls().some(url => /\/subtitles\/2[01]\/download/.test(url)), 'another episode and a run without it are never downloaded')
+
+  const sixth = await subsource.single(query({ episode: 6 }), { subsourceKey: KEY, fonts: false, maxFiles: 1 })
+  assert.equal(await (await fetch(sixth[0]!.url)).text(), srt('Kurd 6'))
+  assert.equal(urls().filter(url => url === `${API}/subtitles/23/download`).length, 1)
+})
+
+test('a big pack is fetched again, not held in memory', async () => {
+  const site = fakeSite({
+    ...routes(),
+    [`${API}/subtitles?movieId=7&language=arabic&limit=100&sort=popular`]: JSON.stringify({ data: [{ subtitleId: 30, releaseInfo: 'Demon Slayer all season' }] }),
+    [`${API}/subtitles/30/download`]: buildZip([{ name: 'Demon Slayer - 01.ass', data: srt('big') + ' '.repeat(3 * 1024 * 1024), method: 0 }])
+  })
+  const { query, urls } = setup(site)
+  await subsource.single(query(), { subsourceKey: KEY, fonts: false })
+  assert.equal((await subsource.single(query(), { subsourceKey: KEY, fonts: false })).length, 1)
+  assert.equal(urls().filter(url => url === `${API}/subtitles/30/download`).length, 2)
+})
+
 test('a refused key is told', async () => {
   const site = fakeSite(Object.fromEntries(Object.entries(routes()).map(([url, body]) => [url, url.startsWith(API) ? { status: 401 } : body])))
   await assert.rejects(subsource.single(setup(site).query(), { subsourceKey: KEY }), /SubSource did not accept the API key/)

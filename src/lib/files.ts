@@ -36,14 +36,17 @@ export async function readPicked (zip: Zip, file: Picked, clock: Clock): Promise
   return reads.flat()
 }
 
+// lone: the download is for this one episode. if not it's a pack, and only a file with the episode's number in its name counts
 export async function unpack (bytes: Uint8Array, numbers: Array<number | undefined>, lone: boolean, clock: Clock): Promise<Array<{ text: string, format: Format }>> {
   // zips start with PK, anything else is one subtitle file as it is
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    if (!lone) return []
     const text = decodeText(bytes)
     const format = detectFormat(text)
     return format ? [{ text, format }] : []
   }
   const zip = await zipFromBytes(bytes)
-  const reads = await Promise.all(pickFiles(zip.entries.map(entry => entry.name), numbers, lone).map(file => readPicked(zip, file, clock)))
+  const picked = pickFiles(zip.entries.map(entry => entry.name), numbers, lone).filter(file => lone || file.episodes)
+  const reads = await Promise.all(picked.map(file => readPicked(zip, file, clock)))
   return reads.flat()
 }

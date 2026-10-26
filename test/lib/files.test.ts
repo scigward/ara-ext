@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { noClock } from '../../src/lib/clock.ts'
-import { readPicked } from '../../src/lib/files.ts'
+import { readPicked, unpack } from '../../src/lib/files.ts'
 import { pickFiles } from '../../src/lib/names.ts'
 import { zipFromBytes } from '../../src/lib/zip.ts'
 
@@ -42,4 +42,13 @@ test('a zip inside the zip is opened for the episode in its name, with the outer
 test('only one level down is opened', async () => {
   const deep = buildZip([{ name: 'Show - 01.zip', data: buildZip([{ name: 'Show - 01.ass', data: ASS }]), method: 0 }])
   assert.deepEqual(await read([{ name: 'Show - 01.zip', data: deep, method: 0 }]), [])
+})
+
+test('a pack only gives a file with the episode in its name', async () => {
+  const texts = async (bytes: Uint8Array, lone: boolean) => (await unpack(bytes, [5], lone, noClock)).map(one => one.text)
+  assert.deepEqual(await texts(buildZip([4, 5].map(n => ({ name: `Show - 0${n}.srt`, data: `${SRT}${n}` }))), false), [`${SRT}5`])
+  const unnumbered = buildZip([{ name: 'Show - Memory Snow.ass', data: ASS }])
+  assert.deepEqual(await texts(unnumbered, false), [])
+  assert.deepEqual(await texts(unnumbered, true), [ASS])
+  assert.deepEqual(await texts(new TextEncoder().encode(SRT), false), [])
 })

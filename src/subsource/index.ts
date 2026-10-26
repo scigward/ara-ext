@@ -1,9 +1,10 @@
 import { answer, maxFiles } from '../lib/answer.ts'
-import { startClock } from '../lib/clock.ts'
+import { cache } from '../lib/cache.ts'
+import { DAY, startClock } from '../lib/clock.ts'
 import { episodeOf } from '../lib/episode.ts'
 import { unpack } from '../lib/files.ts'
 import { api, reachable } from '../lib/http.ts'
-import { describe } from '../lib/names.ts'
+import { batchOf, describe } from '../lib/names.ts'
 
 import type { Options, SubtitleQuery, SubtitleResult } from '../lib/types.ts'
 
@@ -21,6 +22,11 @@ interface Subtitle {
 }
 
 const squash = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+
+// a pack serves every episode of its season, so the next episode needs no download.
+// packs with fonts inside run to 30 MB, too much to hold on a phone
+const downloads = cache<Uint8Array>(DAY, 16)
+const KEEP = 2 * 1024 * 1024
 
 export default new class SubSource {
   url = 'https://api.subsource.net'
@@ -47,20 +53,33 @@ export default new class SubSource {
     const listed = await api(query.fetch, `${base}/subtitles?movieId=${show.movieId}&language=arabic&limit=100&sort=popular`, clock, headers)
     const { data: subtitles = [] } = listed ? await clock.run(listed.json()) as { data?: Subtitle[] } : {}
     const any = movie || query.episodeCount === 1
-    const fits = (name: string) => {
-      const range = describe(`${name}.srt`)?.episodes
-      return !!range && numbers.some(n => n !== undefined && n >= range[0] && n <= range[1])
+    // what a release name says: this episode, a pack with it (a run of episodes, or no number at all), or another episode
+    const kindOf = (name: string) => {
+      const batch = batchOf(name)
+      const range = batch ?? describe(`${name}.srt`)?.episodes
+      if (!range) return 'pack'
+      if (!numbers.some(n => n !== undefined && n >= range[0] && n <= range[1])) return 'other'
+      return batch ? 'pack' : 'one'
     }
     const picked = subtitles.flatMap(subtitle => {
       const names = [subtitle.releaseInfo ?? []].flat()
-      const release = any ? names[0] ?? '' : names.find(fits)
-      return typeof subtitle.subtitleId === 'number' && release !== undefined ? [{ id: subtitle.subtitleId, release, who: subtitle.contributors?.[0]?.displayname }] : []
+      const kinds = names.map(kindOf)
+      const kind = any || kinds.includes('one') ? 'one' : kinds.includes('other') ? undefined : kinds[0]
+      if (typeof subtitle.subtitleId !== 'number' || !kind) return []
+      return [{ id: subtitle.subtitleId, release: names[any ? 0 : kinds.indexOf(kind)] ?? '', pack: kind === 'pack', who: subtitle.contributors?.[0]?.displayname }]
     })
+      // packs first, the site's popular order otherwise
+      .sort((a, b) => Number(b.pack) - Number(a.pack))
 
-    return await answer(picked.slice(0, maxFiles(options) + 2).map(async ({ id, release, who }) => {
-      const res = await api(query.fetch, `${base}/subtitles/${id}/download`, clock, headers)
-      if (!res) return []
-      const files = await unpack(new Uint8Array(await clock.run(res.arrayBuffer())), numbers, true, clock)
+    return await answer(picked.slice(0, maxFiles(options) + 2).map(async ({ id, release, pack, who }) => {
+      let bytes = downloads.get(String(id))
+      if (!bytes) {
+        const res = await api(query.fetch, `${base}/subtitles/${id}/download`, clock, headers)
+        if (!res) return []
+        bytes = new Uint8Array(await clock.run(res.arrayBuffer()))
+        if (bytes.length <= KEEP) downloads.set(String(id), bytes)
+      }
+      const files = await unpack(bytes, numbers, !pack, clock)
       return files.map(file => ({ ...file, who: who || 'SubSource', release }))
     }), query, options)
   }

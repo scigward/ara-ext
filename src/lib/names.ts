@@ -157,6 +157,17 @@ export function describe (path: string): Described | undefined {
   }
 }
 
+// a release that says it covers a run of episodes: "[1 ~ 13]", "(01-25)", "EP01A+B ~ 25End", "E01-E12"
+const BATCH = /(?:^|[^\d.])(?:EP?\s*)?(\d{1,4})[a-z+]{0,3}\s*[-~]\s*(?:EP?\s*)?(\d{1,4})(?![\d.]|p\b)/gi
+
+export function batchOf (release: string): Range | undefined {
+  for (const m of asciiDigits(release).matchAll(BATCH)) {
+    const from = Number(m[1])
+    const to = Number(m[2])
+    if (to - from >= MAX_SPAN && !YEAR.test(m[1]!)) return [from, to]
+  }
+}
+
 const RANK: Record<Format | 'txt' | 'zip', number> = { ass: 0, ssa: 1, srt: 2, vtt: 3, sub: 4, txt: 5, zip: 6 }
 
 const within = (range: Range | undefined, n: number) => !!range && n >= range[0] && n <= range[1]

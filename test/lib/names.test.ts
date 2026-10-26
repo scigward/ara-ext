@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
-import { describe, pickFiles } from '../../src/lib/names.ts'
+import { batchOf, describe, pickFiles } from '../../src/lib/names.ts'
 
 const gintama = JSON.parse(readFileSync(new URL('../fixtures/gintama-names.json', import.meta.url), 'utf8')) as string[]
 
@@ -48,6 +48,17 @@ test('a batch range in a name is not one file', () => {
   assert.equal(of('Show - 001-201 [BD].ass')?.episodes, undefined)
   assert.equal(of('Show 01-12.srt')?.episodes, undefined)
   assert.equal(of('Show 01 ~ 12.srt')?.episodes, undefined)
+})
+
+test('a release that covers a run of episodes says which', () => {
+  assert.deepEqual(batchOf('[Rhythm] Re:Zero kara Hajimeru Isekai Seikatsu: Shin Henshuu-ban [1 ~ 13][BD]'), [1, 13])
+  assert.deepEqual(batchOf('ReZero kara Hajimeru Isekai Seikatsu - 01-25 (BD 1080p)'), [1, 25])
+  assert.deepEqual(batchOf('[Zero-Kon] ReZero kara Hajimeru Isekai Seikatsu (01-25) [BD 720p][BlurayDesuYo]'), [1, 25])
+  assert.deepEqual(batchOf('Re:Zero kara Hajimeru Isekai Seikatsu EP01A+B ~ 25End'), [1, 25])
+  assert.deepEqual(batchOf('Show S01E01-E12'), [1, 12])
+  for (const name of ['[Crunchyroll] ReZero kara Hajimeru Isekai Seikatsu -01B', 'Show - 001-002', 'Show S01E05', "Re_ZERO -Starting Life in Another World- Director's Cut - S01[1080p].crunchyroll", 'Show (2016-2020)', 'Show [720p-1080p]']) {
+    assert.equal(batchOf(name), undefined, name)
+  }
 })
 
 test('decimals and recaps do not turn into whole episodes', () => {
