@@ -32,16 +32,16 @@ export default new class SubSource {
     const clock = startClock(8000, 'SubSource')
     const base = `${this.url}/api/v1`
     const headers = { 'X-API-Key': key }
-    const { movie, season, numbers } = await episodeOf(query, clock)
+    const { movie, season, numbers, imdb } = await episodeOf(query, clock)
 
-    const search = query.imdbId ? `searchType=imdb&imdb=${encodeURIComponent(query.imdbId)}` : `searchType=text&q=${encodeURIComponent(query.titles[0] ?? '')}`
+    const search = imdb ? `searchType=imdb&imdb=${encodeURIComponent(imdb)}` : `searchType=text&q=${encodeURIComponent(query.titles[0] ?? '')}`
     const found = await api(query.fetch, `${base}/movies/search?${search}&type=${movie ? 'movie' : 'series'}${movie ? '' : `&season=${season}`}`, clock, headers)
     const { data: shows = [] } = found ? await clock.run(found.json()) as { data?: Show[] } : {}
     const titles = new Set(query.titles.map(squash))
     // a text search also finds shows with similar names
     const show = shows.find(s => typeof s.movieId === 'number' &&
       (movie ? s.type === 'movie' : s.type !== 'movie' && (s.season ?? season) === season) &&
-      (query.imdbId || titles.has(squash(s.title ?? ''))))
+      (imdb || titles.has(squash(s.title ?? ''))))
     if (!show) return []
 
     const listed = await api(query.fetch, `${base}/subtitles?movieId=${show.movieId}&language=arabic&limit=100&sort=popular`, clock, headers)

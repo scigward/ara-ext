@@ -34,7 +34,7 @@ function routes (): Routes {
 }
 
 function setup (site = fakeSite(routes())) {
-  const query = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({ anilistId: 142329, episode: 1, episodeCount: 11, absoluteEpisodeNumber: 34, titles: ['Kimetsu no Yaiba: Yuukaku-hen'], imdbId: 'tt9335498', fetch: site.fetch, ...extra })
+  const query = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({ anilistId: 142329, episode: 1, episodeCount: 11, absoluteEpisodeNumber: 34, titles: ['Kimetsu no Yaiba: Yuukaku-hen'], imdbId: 'tt9335498|tt0000001', fetch: site.fetch, ...extra })
   return { site, query, urls: () => site.hits.map(hit => hit.url) }
 }
 

@@ -22,9 +22,9 @@ export default new class SubDL {
     if (!key) return []
 
     const clock = startClock(8000, 'SubDL')
-    const { movie, season, episode, numbers } = await episodeOf(query, clock)
+    const { movie, season, episode, numbers, imdb } = await episodeOf(query, clock)
     const params = new URLSearchParams({ api_key: key, languages: 'AR', subs_per_page: '30', type: movie ? 'movie' : 'tv' })
-    if (query.imdbId) params.set('imdb_id', query.imdbId)
+    if (imdb) params.set('imdb_id', imdb)
     else params.set('film_name', query.titles[0] ?? '')
     if (!movie) {
       params.set('season_number', String(season))

@@ -36,7 +36,7 @@ function setup (site = fakeSite(routes())) {
     keys.push(new Headers(init?.headers).get('x-api-key'))
     return await send(input, init)
   }) as typeof fetch)
-  const query = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({ anilistId: 142329, episode: 1, episodeCount: 11, absoluteEpisodeNumber: 34, titles: ['Kimetsu no Yaiba: Yuukaku-hen', 'Demon Slayer'], imdbId: 'tt9335498', fetch: fetchFn, ...extra })
+  const query = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({ anilistId: 142329, episode: 1, episodeCount: 11, absoluteEpisodeNumber: 34, titles: ['Kimetsu no Yaiba: Yuukaku-hen', 'Demon Slayer'], imdbId: 'tt9335498|tt0000001', fetch: fetchFn, ...extra })
   return { site, query, keys, urls: () => site.hits.map(hit => hit.url) }
 }
 
