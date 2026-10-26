@@ -152,6 +152,18 @@ test('a release of another year is another show, and single uploads still come a
   assert.ok(!urls().includes(`${API}/subtitles/39/download`), 'the other year is never downloaded')
 })
 
+test('a pack of ovas is skipped for a tv show, not for an ova', async () => {
+  const site = fakeSite({
+    ...routes(),
+    [`${API}/subtitles?movieId=7&language=arabic&limit=100&sort=popular`]: JSON.stringify({ data: [{ subtitleId: 50, releaseInfo: 'Demon Slayer ova حلقات اوفا فقط' }] }),
+    [`${API}/subtitles/50/download`]: buildZip([{ name: 'Demon Slayer OVA 2 e1.srt', data: srt('ova') }])
+  })
+  const { query, urls } = setup(site)
+  assert.deepEqual(await subsource.single(query({ media: { format: 'TV' } }), { subsourceKey: KEY, fonts: false }), [])
+  assert.ok(!urls().includes(`${API}/subtitles/50/download`))
+  assert.equal((await subsource.single(query({ media: { format: 'OVA' } }), { subsourceKey: KEY, fonts: false })).length, 1)
+})
+
 test('a refused key is told', async () => {
   const site = fakeSite(Object.fromEntries(Object.entries(routes()).map(([url, body]) => [url, url.startsWith(API) ? { status: 401 } : body])))
   await assert.rejects(subsource.single(setup(site).query(), { subsourceKey: KEY }), /SubSource did not accept the API key/)

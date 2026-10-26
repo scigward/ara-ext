@@ -161,6 +161,9 @@ export function describe (path: string): Described | undefined {
   }
 }
 
+// a release of ovas or specials, no tv episode is in it
+export const EXTRAS = /\b(?:OVA|OAD|Specials?)\b|[اأ]وفا/i
+
 // a release that says it covers a run of episodes: "[1 ~ 13]", "(01-25)", "EP01A+B ~ 25End", "E01-E12"
 const BATCH = /(?:^|[^\d.])(?:EP?\s*)?(\d{1,4})[a-z+]{0,3}\s*[-~]\s*(?:EP?\s*)?(\d{1,4})(?![\d.]|p\b)/gi
 

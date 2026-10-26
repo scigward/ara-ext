@@ -4,7 +4,7 @@ import { DAY, startClock } from '../lib/clock.ts'
 import { episodeOf } from '../lib/episode.ts'
 import { unpack } from '../lib/files.ts'
 import { api, reachable } from '../lib/http.ts'
-import { batchOf, describe } from '../lib/names.ts'
+import { EXTRAS, batchOf, describe } from '../lib/names.ts'
 
 import type { Options, SubtitleQuery, SubtitleResult } from '../lib/types.ts'
 
@@ -66,6 +66,7 @@ export default new class SubSource {
       return batch ? 'pack' : 'one'
     }
     const year = query.media?.startDate?.year ?? query.media?.seasonYear
+    const tv = query.media?.format === 'TV' || query.media?.format === 'TV_SHORT'
     // a release that only names another year is another show (hunter x hunter 2011 filed under the 1999 one)
     const elsewhere = (name: string) => {
       const years = [...name.matchAll(/(?:^|[^\dx])((?:19|20)\d\d)(?![\dxp])/gi)].map(m => Number(m[1]))
@@ -76,6 +77,7 @@ export default new class SubSource {
       const kinds = names.map(kindOf)
       const kind = any || kinds.includes('one') ? 'one' : kinds.includes('other') ? undefined : kinds[0]
       if (typeof subtitle.subtitleId !== 'number' || !kind || (names.length && names.every(elsewhere))) return []
+      if (kind === 'pack' && tv && names.some(name => EXTRAS.test(name))) return []
       return [{ id: subtitle.subtitleId, release: names[any ? 0 : kinds.indexOf(kind)] ?? '', pack: kind === 'pack', who: subtitle.contributors?.[0]?.displayname }]
     })
     // packs first, the site's popular order otherwise. singles still get their turn, a pack can hold nothing for this episode

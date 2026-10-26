@@ -4,6 +4,7 @@ import { DAY, startClock } from '../lib/clock.ts'
 import { episodeOf } from '../lib/episode.ts'
 import { unpack } from '../lib/files.ts'
 import { api, reachable, request } from '../lib/http.ts'
+import { EXTRAS } from '../lib/names.ts'
 
 import type { Options, SubtitleQuery, SubtitleResult } from '../lib/types.ts'
 
@@ -39,7 +40,10 @@ export default new class SubDL {
 
     const res = await api(query.fetch, `${this.url}/api/v1/subtitles?${params}`, clock)
     const { subtitles = [] } = res ? await clock.run(res.json()) as { subtitles?: Item[] } : {}
-    const items = subtitles.filter(item => item.url && (movie || !item.season || item.season === season))
+    const tv = query.media?.format === 'TV' || query.media?.format === 'TV_SHORT'
+    const items = subtitles.filter(item => item.url && (movie || !item.season || item.season === season) &&
+      // a pack of ovas or specials is no tv episode
+      !(item.full_season && tv && EXTRAS.test(item.release_name ?? '')))
     // packs first, the site's order otherwise. singles still get their turn, a pack can hold nothing for this episode
     const take = maxFiles(options) + 2
     const chosen = [...items.filter(item => item.full_season).slice(0, take), ...items.filter(item => !item.full_season).slice(0, take)]
