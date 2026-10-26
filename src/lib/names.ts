@@ -161,6 +161,9 @@ export function describe (path: string): Described | undefined {
   }
 }
 
+// letters and digits only, so "Re:Zero" meets "re zero"
+export const squash = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+
 // a release of an ova or a special, it's no tv episode
 export const EXTRAS = /\b(?:OVA|OAD|Specials?)\b|[اأ]وفا/i
 
@@ -168,7 +171,10 @@ export const EXTRAS = /\b(?:OVA|OAD|Specials?)\b|[اأ]وفا/i
 const BATCH = /(?:^|[^\d.])(?:EP?\s*)?(\d{1,4})[a-z+]{0,3}\s*[-~]\s*(?:EP?\s*)?(\d{1,4})(?![\d.]|p\b)/gi
 
 export function batchOf (release: string): Range | undefined {
-  for (const m of asciiDigits(release).matchAll(BATCH)) {
+  const text = asciiDigits(release)
+  for (const m of text.matchAll(BATCH)) {
+    // "S4 - 29" and "Season 2 - 13" are a season and its episode, not a run
+    if (/(?:\bS|Season|Part|Cour)\s*$/i.test(text.slice(0, m.index + m[0].indexOf(m[1]!)))) continue
     const from = Number(m[1])
     const to = Number(m[2])
     if (to - from >= MAX_SPAN && !YEAR.test(m[1]!)) return [from, to]

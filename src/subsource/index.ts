@@ -4,7 +4,7 @@ import { DAY, startClock } from '../lib/clock.ts'
 import { episodeOf } from '../lib/episode.ts'
 import { unpack } from '../lib/files.ts'
 import { api, reachable } from '../lib/http.ts'
-import { EXTRAS, batchOf, describe } from '../lib/names.ts'
+import { EXTRAS, batchOf, describe, squash } from '../lib/names.ts'
 
 import type { Options, SubtitleQuery, SubtitleResult } from '../lib/types.ts'
 
@@ -21,8 +21,6 @@ interface Subtitle {
   contributors?: Array<{ displayname?: string }>
 }
 
-const squash = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
-
 // a pack serves every episode of its season, so the next episode needs no download.
 // packs with fonts inside run to 30 MB, too much to hold on a phone
 const downloads = cache<Uint8Array>(DAY, 16)
@@ -38,7 +36,7 @@ export default new class SubSource {
     const clock = startClock(8000, 'SubSource')
     const base = `${this.url}/api/v1`
     const headers = { 'X-API-Key': key }
-    const { movie, season, numbers, imdb } = await episodeOf(query, clock)
+    const { movie, season, numbers, imdb, mapped } = await episodeOf(query, clock)
 
     const search = imdb ? `searchType=imdb&imdb=${encodeURIComponent(imdb)}` : `searchType=text&q=${encodeURIComponent(query.titles[0] ?? '')}`
     const titles = new Set(query.titles.map(squash))
@@ -56,13 +54,17 @@ export default new class SubSource {
 
     const listed = await api(query.fetch, `${base}/subtitles?movieId=${show.movieId}&language=arabic&limit=100&sort=popular`, clock, headers)
     const { data: subtitles = [] } = listed ? await clock.run(listed.json()) as { data?: Subtitle[] } : {}
-    const any = movie || query.episodeCount === 1
+    // a one episode entry takes any release, unless the tv databases put it inside a show (attack on titan's final
+    // special is s4e29, it shares a list with the whole season)
+    const any = movie || (query.episodeCount === 1 && !mapped)
     // what a release name says: this episode, a pack with it (a run of episodes, or no number at all), or another episode
     const kindOf = (name: string) => {
       const batch = batchOf(name)
-      const range = batch ?? describe(`${name}.srt`)?.episodes
-      if (!range) return 'pack'
-      if (!numbers.some(n => n !== undefined && n >= range[0] && n <= range[1])) return 'other'
+      const described = batch ? undefined : describe(`${name}.srt`)
+      // "part 3 - 01 [S4 - 29]": the season tag can be the number the databases use
+      const ranges = [batch ?? described?.episodes, described?.season].filter(range => !!range)
+      if (!ranges.length) return 'pack'
+      if (!ranges.some(range => numbers.some(n => n !== undefined && n >= range[0] && n <= range[1]))) return 'other'
       return batch ? 'pack' : 'one'
     }
     const year = query.media?.startDate?.year ?? query.media?.seasonYear

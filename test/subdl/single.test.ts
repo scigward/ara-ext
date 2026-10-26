@@ -25,7 +25,8 @@ function routes (dl = 'subtitle'): Routes {
         { release_name: 'Demon Slayer S03 Complete', author: 'Pack', url: `/${dl}/2.zip`, season: 3, full_season: true },
         { release_name: 'Demon.Slayer.S03E01.1080p.WEB', author: 'One', url: `/${dl}/1.zip`, season: 3 },
         { release_name: 'Demon Slayer S01E01', author: 'Old', url: `/${dl}/3.zip`, season: 1 },
-        { release_name: 'Demon Slayer S03E01 mirror', author: 'Mirror', url: `/${dl}/4.zip`, season: 3 }
+        { release_name: 'Demon Slayer S03E01 mirror', author: 'Mirror', url: `/${dl}/4.zip`, season: 3 },
+        { release_name: 'Demon Slayer S03E02', author: 'Next', url: `/${dl}/5.zip`, season: 3, episode: 2 }
       ]
     }),
     [`https://dl.subdl.com/${dl}/1.zip`]: buildZip([{ name: 'Demon.Slayer.S03E01.1080p.WEB.srt', data: srt('one') }]),
@@ -53,6 +54,7 @@ test('season and episode come from ani.zip, packs first, the episode is picked o
   assert.deepEqual(results.map(r => r.language), ['Arabic - Pack (Demon Slayer S03E01).srt', 'Arabic - One (Demon.Slayer.S03E01.1080p.WEB).srt'])
   assert.deepEqual(await texts(results), [srt('pack 1'), srt('one')])
   assert.ok(!urls().includes('https://dl.subdl.com/subtitle/3.zip'), 'another season is never downloaded')
+  assert.ok(!urls().includes('https://dl.subdl.com/subtitle/5.zip'), 'another episode of the season is never downloaded')
   assert.ok(urls().filter(url => url.includes(KEY)).every(url => url.startsWith(API)), 'the key only goes to the api')
 })
 
@@ -96,6 +98,19 @@ test('a pack is downloaded once for all its episodes', async () => {
   const results = await subdl.single(query({ episode: 2 }), { subdlKey: KEY, fonts: false })
   assert.deepEqual(await texts(results), [srt('pack 2')])
   assert.equal(urls().filter(url => url === 'https://dl.subdl.com/kept/2.zip').length, 1)
+})
+
+test('a search by name takes only a show of that very name', async () => {
+  const search = `${API}?api_key=${KEY}&languages=AR&subs_per_page=30&type=tv&film_name=Shelter&season_number=1&episode_number=1`
+  const answer = (name: string) => fakeSite({
+    [search]: JSON.stringify({ results: [{ name }], subtitles: [{ release_name: `${name} S01E01`, author: 'Who', url: '/named/1.zip', season: 1, episode: 1 }] }),
+    'https://dl.subdl.com/named/1.zip': buildZip([{ name: 'Shelter.srt', data: srt('shelter') }])
+  })
+  const other = setup(answer("Harlan Coben's Shelter"))
+  assert.deepEqual(await subdl.single(other.query({ anilistId: 97731, imdbId: undefined, titles: ['Shelter'] }), { subdlKey: KEY }), [])
+  assert.ok(!other.urls().some(url => url.startsWith('https://dl.subdl.com')))
+  const same = setup(answer('Shelter'))
+  assert.equal((await subdl.single(same.query({ anilistId: 97731, imdbId: undefined, titles: ['Shelter'] }), { subdlKey: KEY, fonts: false })).length, 1)
 })
 
 test('test() is the site answering at all', async () => {

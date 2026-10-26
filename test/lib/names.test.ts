@@ -61,7 +61,7 @@ test('a release that covers a run of episodes says which', () => {
   assert.deepEqual(batchOf('[Zero-Kon] ReZero kara Hajimeru Isekai Seikatsu (01-25) [BD 720p][BlurayDesuYo]'), [1, 25])
   assert.deepEqual(batchOf('Re:Zero kara Hajimeru Isekai Seikatsu EP01A+B ~ 25End'), [1, 25])
   assert.deepEqual(batchOf('Show S01E01-E12'), [1, 12])
-  for (const name of ['[Crunchyroll] ReZero kara Hajimeru Isekai Seikatsu -01B', 'Show - 001-002', 'Show S01E05', "Re_ZERO -Starting Life in Another World- Director's Cut - S01[1080p].crunchyroll", 'Show (2016-2020)', 'Show [720p-1080p]']) {
+  for (const name of ['Shingeki no Kyojin: The Final Season Part 3 - 01 [S4 - 29][Group]', 'Show Season 2 - 13', '[Crunchyroll] ReZero kara Hajimeru Isekai Seikatsu -01B', 'Show - 001-002', 'Show S01E05', "Re_ZERO -Starting Life in Another World- Director's Cut - S01[1080p].crunchyroll", 'Show (2016-2020)', 'Show [720p-1080p]']) {
     assert.equal(batchOf(name), undefined, name)
   }
 })

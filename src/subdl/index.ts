@@ -4,7 +4,7 @@ import { DAY, startClock } from '../lib/clock.ts'
 import { episodeOf } from '../lib/episode.ts'
 import { unpack } from '../lib/files.ts'
 import { api, reachable, request } from '../lib/http.ts'
-import { EXTRAS } from '../lib/names.ts'
+import { EXTRAS, squash } from '../lib/names.ts'
 
 import type { Options, SubtitleQuery, SubtitleResult } from '../lib/types.ts'
 
@@ -13,6 +13,7 @@ interface Item {
   author?: string
   url?: string
   season?: number
+  episode?: number | null
   full_season?: boolean
 }
 
@@ -39,9 +40,14 @@ export default new class SubDL {
     }
 
     const res = await api(query.fetch, `${this.url}/api/v1/subtitles?${params}`, clock)
-    const { subtitles = [] } = res ? await clock.run(res.json()) as { subtitles?: Item[] } : {}
+    const { results = [], subtitles = [] } = res ? await clock.run(res.json()) as { results?: Array<{ name?: string }>, subtitles?: Item[] } : {}
+    // a search by name finds shows with similar names too ("shelter" finds harlan coben's shelter)
+    const titles = new Set(query.titles.map(squash))
+    if (!imdb && !titles.has(squash(results[0]?.name ?? ''))) return []
     const tv = query.media?.format === 'TV' || query.media?.format === 'TV_SHORT'
-    const items = subtitles.filter(item => item.url && (movie || !item.season || item.season === season) &&
+    const items = subtitles.filter(item => item.url &&
+      // the site hands back the whole season, single uploads of other episodes included
+      (movie || ((!item.season || item.season === season) && (item.full_season || !item.episode || item.episode === episode))) &&
       // an ova or special release is no tv episode
       !(tv && EXTRAS.test(item.release_name ?? '')))
     // packs first, the site's order otherwise. singles still get their turn, a pack can hold nothing for this episode

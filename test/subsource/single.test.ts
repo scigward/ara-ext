@@ -165,6 +165,25 @@ test('ova packs and singles are skipped for a tv show, not for an ova', async ()
   assert.equal((await subsource.single(query({ media: { format: 'OVA' } }), { subsourceKey: KEY, fonts: false })).length, 2)
 })
 
+test('a one episode special the databases put inside a season takes only its own episode', async () => {
+  const site = fakeSite({
+    [ANIZIP]: JSON.stringify({ mappings: { imdb_id: 'tt9335498' }, episodes: { 1: { seasonNumber: 4, episodeNumber: 29 } } }),
+    [`${API}/movies/search?searchType=imdb&imdb=tt9335498&type=series&season=4`]: JSON.stringify({ data: [{ movieId: 8, title: 'Attack on Titan', type: 'tvseries', season: 4 }] }),
+    [`${API}/subtitles?movieId=8&language=arabic&limit=100&sort=popular`]: JSON.stringify({
+      data: [
+        { subtitleId: 70, releaseInfo: 'Shingeki.no.Kyojin-Final Season -28-[1080p] [WEB-DL]' },
+        { subtitleId: 71, releaseInfo: 'Shingeki no Kyojin: The Final Season Part 3 - 01 [S4 - 29][Group]' }
+      ]
+    }),
+    [`${API}/subtitles/70/download`]: buildZip([{ name: 'a.srt', data: srt('28') }]),
+    [`${API}/subtitles/71/download`]: buildZip([{ name: 'b.srt', data: srt('29') }])
+  })
+  const { query, urls } = setup(site)
+  const results = await subsource.single(query({ episodeCount: 1, absoluteEpisodeNumber: 88, media: { format: 'SPECIAL' } }), { subsourceKey: KEY, fonts: false })
+  assert.deepEqual(await Promise.all(results.map(async r => await (await fetch(r.url)).text())), [srt('29')])
+  assert.ok(!urls().includes(`${API}/subtitles/70/download`))
+})
+
 test('a refused key is told', async () => {
   const site = fakeSite(Object.fromEntries(Object.entries(routes()).map(([url, body]) => [url, url.startsWith(API) ? { status: 401 } : body])))
   await assert.rejects(subsource.single(setup(site).query(), { subsourceKey: KEY }), /SubSource did not accept the API key/)
