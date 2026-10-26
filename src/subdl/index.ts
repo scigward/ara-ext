@@ -38,8 +38,8 @@ export default new class SubDL {
       .sort((a, b) => Number(!!a.full_season) - Number(!!b.full_season))
 
     return await answer(items.slice(0, maxFiles(options) + 2).map(async item => {
-      const res = await request(query.fetch, `https://dl.subdl.com${item.url}`, clock)
-      const files = await unpack(new Uint8Array(await clock.run(res.arrayBuffer())), numbers, !item.full_season, clock)
+      const download = await request(query.fetch, `https://dl.subdl.com${item.url}`, clock)
+      const files = await unpack(new Uint8Array(await clock.run(download.arrayBuffer())), numbers, !item.full_season, clock)
       return files.map(file => ({ ...file, who: item.author || 'SubDL', release: item.release_name ?? '' }))
     }), query, options)
   }

@@ -19,7 +19,6 @@ export function maxFiles (options: Options): number {
   return Math.min(8, Math.max(1, Math.round(Number(options.maxFiles) || 3)))
 }
 
-// same label twice gets a 2 on the second one
 export function unique (names: string[]): string[] {
   const seen = new Map<string, number>()
   return names.map(name => {

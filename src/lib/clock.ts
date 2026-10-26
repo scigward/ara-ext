@@ -8,7 +8,6 @@ export interface Clock {
   run: <T>(work: Promise<T>) => Promise<T>
 }
 
-// for when there's nothing to wait for
 export const noClock: Clock = { site: '', left: () => Infinity, run: work => work }
 
 // hayase kills a call after 10s without a word, so we stop first and hand back what we have

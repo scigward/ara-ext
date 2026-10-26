@@ -162,7 +162,7 @@ export async function openZip (fetchFn: typeof fetch, url: string, clock: Clock,
   }, clock)
 }
 
-// a zip from inside another zip, nothing to fetch
+// a zip already in memory, nothing to fetch
 export function zipFromBytes (bytes: Uint8Array): Promise<Zip> {
   return build(bytes, true, () => Promise.reject(new Error('that zip is cut short')), noClock)
 }

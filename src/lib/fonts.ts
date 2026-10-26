@@ -152,7 +152,7 @@ function fromSrt (text: string, fonts: Fonts): string | undefined {
   return [...head, ...events, ''].join('\r\n')
 }
 
-// the same subtitle with an arabic font that is really there. a file that brings its own fonts is left alone
+// a file that brings its own fonts is left alone
 export function withFont (text: string, format: Format, fonts: Fonts): { text: string, format: Format } {
   if (format === 'srt') {
     const converted = fromSrt(text, fonts)

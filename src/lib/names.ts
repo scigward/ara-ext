@@ -6,7 +6,7 @@ type Range = [number, number]
 
 export interface Described {
   path: string
-  // what the extension says. txt and zip only count with an episode in the name: a txt is read for what it is,
+  // what the file extension says. txt and zip only count with an episode in the name: a txt is read for what it is,
   // a zip is one episode in its own archive (a few batches are zips of zips)
   format: Format | 'txt' | 'zip'
   // from the name, nothing if it has no number we trust. later seasons often number through the whole series (23)
@@ -180,14 +180,14 @@ export interface Picked extends Described {
 }
 
 // the files of one zip for this episode, best copy of each (format, then version).
-// episodes, lone and span are what a plan step carries, see plan.ts
+// lone: the zip is said to be for this one episode. span: the episodes it is said to cover
 export function pickFiles (paths: string[], episodes: Array<number | undefined>, lone: boolean, span?: Range): Picked[] {
   const all = paths.map(describe).filter((d): d is Described => !!d)
   const mixed = new Set(all.map(d => d.group).filter(Boolean)).size > 1
   const [episode, absolute] = episodes
 
-  // two numberings can share a name: the plain one and the season tag (or the gap from it). the page uses
-  // one of them, the one that puts the files inside its range
+  // two numberings can share a name: the plain one and the season tag (or the gap from it). the source uses
+  // one of them, the one that puts the files inside its span
   const gap = gapOf(all)
   const main = (d: Described) => d.episodes
   const season = (d: Described) => gap !== undefined && d.episodes ? shift(d.episodes, gap) : d.season
@@ -208,7 +208,7 @@ export function pickFiles (paths: string[], episodes: Array<number | undefined>,
   if (!found.length && absolute !== undefined) found = all.filter(d => within(d.episodes, absolute))
 
   // the zip numbers its files its own way (39 to 50 for the twelve episodes of a part 2). if no file number
-  // falls in the page's range and there are as many numbers as episodes, the nth file is the nth episode
+  // falls in the span and there are as many numbers as episodes, the nth file is the nth episode
   if (!found.length && span && episode !== undefined && episode >= span[0] && episode <= span[1]) {
     const numbers = [...new Set(all.flatMap(d => d.episodes ? [d.episodes[0]] : []))].sort((a, b) => a - b)
     const elsewhere = all.every(d => !d.episodes || d.episodes[1] < span[0] || d.episodes[0] > span[1])
@@ -216,11 +216,11 @@ export function pickFiles (paths: string[], episodes: Array<number | undefined>,
   }
 
   if (!found.length) {
-    // the page says which episode this zip is for and it's the better judge: a lone file is it, whatever its
+    // the source says which episode this zip is for and it's the better judge: a lone file is it, whatever its
     // number says. files that agree on one number are variants of that episode, files that don't are other episodes
     const numbers = new Set(all.flatMap(d => d.episodes ? [d.episodes[0]] : []))
     if (lone) found = all.length === 1 || numbers.size <= 1 ? all : all.filter(d => !d.strong)
-    // one file with no number is a special or a compilation, it covers whatever the page says
+    // one file with no number is a special or a compilation, it covers whatever the source says
     else if (all.length === 1 && !all[0]!.episodes) found = all
   }
 
