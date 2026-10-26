@@ -41,13 +41,17 @@ export default new class SubSource {
     const { movie, season, numbers, imdb } = await episodeOf(query, clock)
 
     const search = imdb ? `searchType=imdb&imdb=${encodeURIComponent(imdb)}` : `searchType=text&q=${encodeURIComponent(query.titles[0] ?? '')}`
-    const found = await api(query.fetch, `${base}/movies/search?${search}&type=${movie ? 'movie' : 'series'}${movie ? '' : `&season=${season}`}`, clock, headers)
-    const { data: shows = [] } = found ? await clock.run(found.json()) as { data?: Show[] } : {}
     const titles = new Set(query.titles.map(squash))
-    // a text search also finds shows with similar names
-    const show = shows.find(s => typeof s.movieId === 'number' &&
-      (movie ? s.type === 'movie' : s.type !== 'movie' && (s.season ?? season) === season) &&
-      (imdb || titles.has(squash(s.title ?? ''))))
+    const find = async (want?: number) => {
+      const found = await api(query.fetch, `${base}/movies/search?${search}&type=${movie ? 'movie' : 'series'}${want === undefined ? '' : `&season=${want}`}`, clock, headers)
+      const { data: shows = [] } = found ? await clock.run(found.json()) as { data?: Show[] } : {}
+      // a text search also finds shows with similar names
+      return shows.find(s => typeof s.movieId === 'number' &&
+        (movie ? s.type === 'movie' : s.type !== 'movie' && (s.season ?? want) === want) &&
+        (imdb || titles.has(squash(s.title ?? ''))))
+    }
+    // some shows are on the site as one season 0 that has every episode (hunter x hunter 1999)
+    const show = movie ? await find() : await find(season) ?? await find(0)
     if (!show) return []
 
     const listed = await api(query.fetch, `${base}/subtitles?movieId=${show.movieId}&language=arabic&limit=100&sort=popular`, clock, headers)
@@ -61,17 +65,24 @@ export default new class SubSource {
       if (!numbers.some(n => n !== undefined && n >= range[0] && n <= range[1])) return 'other'
       return batch ? 'pack' : 'one'
     }
+    const year = query.media?.startDate?.year ?? query.media?.seasonYear
+    // a release that only names another year is another show (hunter x hunter 2011 filed under the 1999 one)
+    const elsewhere = (name: string) => {
+      const years = [...name.matchAll(/(?:^|[^\dx])((?:19|20)\d\d)(?![\dxp])/gi)].map(m => Number(m[1]))
+      return !!year && years.length > 0 && years.every(y => Math.abs(y - year) > 1)
+    }
     const picked = subtitles.flatMap(subtitle => {
       const names = [subtitle.releaseInfo ?? []].flat()
       const kinds = names.map(kindOf)
       const kind = any || kinds.includes('one') ? 'one' : kinds.includes('other') ? undefined : kinds[0]
-      if (typeof subtitle.subtitleId !== 'number' || !kind) return []
+      if (typeof subtitle.subtitleId !== 'number' || !kind || (names.length && names.every(elsewhere))) return []
       return [{ id: subtitle.subtitleId, release: names[any ? 0 : kinds.indexOf(kind)] ?? '', pack: kind === 'pack', who: subtitle.contributors?.[0]?.displayname }]
     })
-      // packs first, the site's popular order otherwise
-      .sort((a, b) => Number(b.pack) - Number(a.pack))
+    // packs first, the site's popular order otherwise. singles still get their turn, a pack can hold nothing for this episode
+    const take = maxFiles(options) + 2
+    const chosen = [...picked.filter(p => p.pack).slice(0, take), ...picked.filter(p => !p.pack).slice(0, take)]
 
-    return await answer(picked.slice(0, maxFiles(options) + 2).map(async ({ id, release, pack, who }) => {
+    return await answer(chosen.map(async ({ id, release, pack, who }) => {
       let bytes = downloads.get(String(id))
       if (!bytes) {
         const res = await api(query.fetch, `${base}/subtitles/${id}/download`, clock, headers)
@@ -80,7 +91,8 @@ export default new class SubSource {
         if (bytes.length <= KEEP) downloads.set(String(id), bytes)
       }
       const files = await unpack(bytes, numbers, !pack, clock)
-      return files.map(file => ({ ...file, who: who || 'SubSource', release }))
+      // a pack's track is named after the episode's file, not the whole season
+      return files.map(({ text, format, name }) => ({ text, format, who: who || 'SubSource', release: pack && name ? name : release }))
     }), query, options)
   }
 

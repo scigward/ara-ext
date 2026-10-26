@@ -50,7 +50,7 @@ test('without a key nothing is asked', async () => {
 test('season and episode come from ani.zip, packs first, the episode is picked out of a pack', async () => {
   const { query, urls } = setup()
   const results = await subdl.single(query(), { subdlKey: KEY, fonts: false })
-  assert.deepEqual(results.map(r => r.language), ['Arabic - Pack (Demon Slayer S03 Complete).srt', 'Arabic - One (Demon.Slayer.S03E01.1080p.WEB).srt'])
+  assert.deepEqual(results.map(r => r.language), ['Arabic - Pack (Demon Slayer S03E01).srt', 'Arabic - One (Demon.Slayer.S03E01.1080p.WEB).srt'])
   assert.deepEqual(await texts(results), [srt('pack 1'), srt('one')])
   assert.ok(!urls().includes('https://dl.subdl.com/subtitle/3.zip'), 'another season is never downloaded')
   assert.ok(urls().filter(url => url.includes(KEY)).every(url => url.startsWith(API)), 'the key only goes to the api')

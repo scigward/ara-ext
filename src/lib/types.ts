@@ -9,7 +9,7 @@ export interface SubtitleQuery {
   episodeCount?: number
   absoluteEpisodeNumber?: number | null
   titles: string[]
-  media?: { idMal?: number | null, format?: string | null }
+  media?: { idMal?: number | null, format?: string | null, startDate?: { year?: number | null } | null, seasonYear?: number | null }
   // on ios this is a proxy: no response headers, no body stream
   fetch: typeof fetch
 }

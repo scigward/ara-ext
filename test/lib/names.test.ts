@@ -50,6 +50,11 @@ test('a batch range in a name is not one file', () => {
   assert.equal(of('Show 01 ~ 12.srt')?.episodes, undefined)
 })
 
+test('a tag that counts the episodes is the episode, unless the file is a special', () => {
+  assert.deepEqual(of('Hunter_X_Hunter_[62_of_62]_[ru_jp]_[MifSnaiper_&_Animereactor_Ru].ass')?.episodes, [62, 62])
+  assert.equal(of('Hunter_X_Hunter_[OVA]_[06_of_08]_[ru_jp]_[MifSnaiper__Animereactor_Ru].srt')?.episodes, undefined)
+})
+
 test('a release that covers a run of episodes says which', () => {
   assert.deepEqual(batchOf('[Rhythm] Re:Zero kara Hajimeru Isekai Seikatsu: Shin Henshuu-ban [1 ~ 13][BD]'), [1, 13])
   assert.deepEqual(batchOf('ReZero kara Hajimeru Isekai Seikatsu - 01-25 (BD 1080p)'), [1, 25])

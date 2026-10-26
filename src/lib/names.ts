@@ -31,6 +31,9 @@ const TAG = /^(?:v\d+|\d{3,4}[pi]|\d{3,4}x\d{3,4}|[\da-f]{8}|bd(?:rip)?|blu-?ray
 const SEASON_TAG = /^(?:S|P|Part\s*|Season\s*|Cour\s*)\d{1,2}\s*[-–]?\s*(?:E|EP)?\s*(\d{1,3})(?:\s+(?:END|FINAL|FIN))?$/i
 const EPISODE_TAG = /^(?:E(?:P)?\s*)?(\d{1,4})(?:v\d+)?$/i
 const PART_TAG = /^Part\s*(\d{1,2})$/i
+// [01_of_62]
+const OF_TAG = /^(\d{1,4})[\s_]*of[\s_]*\d{1,4}$/i
+const SPECIAL_TAG = /^(?:OVA|OAD|ONA|SP|Specials?)$/i
 
 const asciiDigits = (text: string) => text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660))
 
@@ -91,9 +94,10 @@ function episodesOf (outside: string, groups: string[]): Found {
   const start = /^\s*(\d{1,4})(?:v\d+)?(?=[\s-]|$)/.exec(text)
   if (start && !YEAR.test(start[1]!)) return { range: span(start[1]!), strong: false }
 
-  // nothing in the name itself, so brackets: [05], (part 2)
+  // nothing in the name itself, so brackets: [05], (part 2), [05_of_62] unless a bracket says it's a special
+  const extra = groups.some(group => SPECIAL_TAG.test(group))
   for (const group of groups) {
-    const m = EPISODE_TAG.exec(group) ?? PART_TAG.exec(group)
+    const m = EPISODE_TAG.exec(group) ?? PART_TAG.exec(group) ?? (extra ? null : OF_TAG.exec(group))
     if (m && !YEAR.test(m[1]!)) return { range: span(m[1]!), strong: true }
   }
   return { strong: false }
@@ -115,7 +119,7 @@ function versionOf (text: string, groups: string[]): number {
 const clean = (text: string) => text.replace(/\s+/g, ' ').trim()
 
 // markers say where a file sits, they don't name a group or tell files apart
-const marker = (g: string) => EPISODE_TAG.test(g) || SEASON_TAG.test(g) || PART_TAG.test(g)
+const marker = (g: string) => EPISODE_TAG.test(g) || SEASON_TAG.test(g) || PART_TAG.test(g) || OF_TAG.test(g)
 
 function groupOf (groups: string[]): string | undefined {
   return groups.map(clean).find(group => group && group.length <= 60 && !TAG.test(group) && !marker(group))

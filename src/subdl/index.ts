@@ -39,12 +39,12 @@ export default new class SubDL {
 
     const res = await api(query.fetch, `${this.url}/api/v1/subtitles?${params}`, clock)
     const { subtitles = [] } = res ? await clock.run(res.json()) as { subtitles?: Item[] } : {}
-    const items = subtitles
-      .filter(item => item.url && (movie || !item.season || item.season === season))
-      // packs first, the site's order otherwise
-      .sort((a, b) => Number(!!b.full_season) - Number(!!a.full_season))
+    const items = subtitles.filter(item => item.url && (movie || !item.season || item.season === season))
+    // packs first, the site's order otherwise. singles still get their turn, a pack can hold nothing for this episode
+    const take = maxFiles(options) + 2
+    const chosen = [...items.filter(item => item.full_season).slice(0, take), ...items.filter(item => !item.full_season).slice(0, take)]
 
-    return await answer(items.slice(0, maxFiles(options) + 2).map(async item => {
+    return await answer(chosen.map(async item => {
       const url = `https://dl.subdl.com${item.url}`
       let bytes = downloads.get(url)
       if (!bytes) {
@@ -52,7 +52,8 @@ export default new class SubDL {
         if (bytes.length <= KEEP) downloads.set(url, bytes)
       }
       const files = await unpack(bytes, numbers, !item.full_season, clock)
-      return files.map(file => ({ ...file, who: item.author || 'SubDL', release: item.release_name ?? '' }))
+      // a pack's track is named after the episode's file, not the whole season
+      return files.map(({ text, format, name }) => ({ text, format, who: item.author || 'SubDL', release: item.full_season && name ? name : item.release_name ?? '' }))
     }), query, options)
   }
 
