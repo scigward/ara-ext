@@ -15,7 +15,8 @@
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
     "check": "npm run typecheck && npm run lint && npm test",
     "verify-live": "node scripts/verify-live.ts",
-    "smoke": "node scripts/smoke.ts"
+    "smoke": "node scripts/smoke.ts",
+    "reliability": "npm run build && node --env-file-if-exists=apikeys.env scripts/reliability.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
