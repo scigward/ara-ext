@@ -21,42 +21,54 @@ interface Entry {
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const manifest = JSON.parse(read('../index.json')) as Entry[]
 
-test('the manifest has what hayase insists on when importing', () => {
-  assert.equal(manifest.length, 1)
-  const [entry] = manifest
-  for (const key of ['name', 'version', 'id', 'type', 'accuracy', 'icon', 'update', 'code']) assert.ok(key in entry!, key)
-  assert.equal(entry!.type, 'subtitle')
-  assert.equal(entry!.manifestVersion, 2)
+// the file each one is built into, its icon (the site's own, no artwork of ours) and the site hayase opens cors for
+const expected: Record<string, { file: string, icon: RegExp, site: string }> = {
+  miraianime: { file: 'mirai.js', icon: /^https:\/\/miraianime\.net\/wp-content\/uploads\/[^/]+\.png$/, site: 'https://miraianime.net' },
+  subdl: { file: 'subdl.js', icon: /^https:\/\/subdl\.com\/logo\/fav\.png$/, site: 'https://api.subdl.com' },
+  subsource: { file: 'subsource.js', icon: /^https:\/\/subsource\.net\/icon\.png$/, site: 'https://api.subsource.net' }
+}
+
+test('three separate extensions with what hayase insists on when importing, and no description', () => {
+  assert.deepEqual(manifest.map(entry => entry.id), Object.keys(expected))
+  for (const entry of manifest) {
+    for (const key of ['name', 'version', 'id', 'type', 'accuracy', 'icon', 'update', 'code']) assert.ok(key in entry, key)
+    assert.equal(entry.type, 'subtitle')
+    assert.equal(entry.manifestVersion, 2)
+    assert.equal('description' in entry, false)
+  }
 })
 
 test('update and code point at the pages site, the icon is the favicon of the site itself', () => {
-  const [entry] = manifest
-  assert.equal(entry!.update, 'https://mirai-ext.pages.dev/index.json')
-  assert.equal(entry!.code, 'https://mirai-ext.pages.dev/mirai.js')
-  // no artwork of our own in this repo
-  assert.match(entry!.icon, /^https:\/\/miraianime\.net\/wp-content\/uploads\/[^/]+\.png$/)
+  for (const entry of manifest) {
+    assert.equal(entry.update, 'https://mirai-ext.pages.dev/index.json')
+    assert.equal(entry.code, `https://mirai-ext.pages.dev/${expected[entry.id]!.file}`)
+    assert.match(entry.icon, expected[entry.id]!.icon)
+  }
 })
 
-test('the site is told to hayase as a base64 origin, so desktop hayase can switch cors on for it', () => {
-  // the pages and the zips send no cors headers, only the ios app (which has no cors) works without this
-  assert.equal(atob(manifest[0]!.url), 'https://miraianime.net')
+test('each site is told to hayase as a base64 origin, so desktop and android hayase can switch cors on for it', () => {
+  for (const entry of manifest) assert.equal(atob(entry.url), expected[entry.id]!.site)
 })
 
 test('the version lives in index.json only, so bumping it never needs anything else to follow', () => {
-  // hayase updates the extension when this changes. package.json and the built file carry no version of their own
-  assert.match(manifest[0]!.version, /^\d+\.\d+\.\d+$/)
+  // hayase updates an extension when this changes. package.json and the built files carry no version of their own
   assert.equal('version' in (JSON.parse(read('../package.json')) as object), false)
-  assert.doesNotMatch(read('../public/mirai.js').split('\n')[0]!, /\d+\.\d+\.\d+/)
+  for (const entry of manifest) {
+    assert.match(entry.version, /^\d+\.\d+\.\d+$/)
+    assert.doesNotMatch(read(`../public/${expected[entry.id]!.file}`).split('\n')[0]!, /\d+\.\d+\.\d+/)
+  }
 })
 
-test('the built file the manifest points at exists', () => {
-  assert.ok(existsSync(new URL('../public/mirai.js', import.meta.url)))
+test('the built files the manifest points at exist', () => {
+  for (const entry of manifest) assert.ok(existsSync(new URL(`../public/${expected[entry.id]!.file}`, import.meta.url)))
 })
 
 test('options are typed like hayase expects', () => {
-  for (const option of Object.values(manifest[0]!.options)) {
-    assert.ok(['string', 'number', 'boolean', 'select'].includes(option.type))
-    assert.ok(option.description.length > 0)
-    assert.ok('default' in option)
+  for (const entry of manifest) {
+    for (const option of Object.values(entry.options)) {
+      assert.ok(['string', 'number', 'boolean', 'select'].includes(option.type))
+      assert.ok(option.description.length > 0)
+      assert.ok('default' in option)
+    }
   }
 })

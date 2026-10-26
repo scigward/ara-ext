@@ -4,6 +4,7 @@ export interface SubtitleQuery {
   anilistId: number
   malId?: number | null
   anidbAid?: number | null
+  imdbId?: string | null
   episode: number
   episodeCount?: number
   absoluteEpisodeNumber?: number | null

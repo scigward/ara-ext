@@ -7,7 +7,7 @@ const folder = new URL('../public/', import.meta.url)
 const read = (name: string) => readFileSync(new URL(name, folder), 'utf8')
 
 test('only what hayase needs is public, nothing from the source side can slip in', () => {
-  assert.deepEqual(readdirSync(folder).sort(), ['404.html', '_headers', 'index.json', 'mirai.js', 'robots.txt'])
+  assert.deepEqual(readdirSync(folder).sort(), ['404.html', '_headers', 'index.json', 'mirai.js', 'robots.txt', 'subdl.js', 'subsource.js'])
 })
 
 test('the manifest that goes out is the one in the repo', () => {
@@ -34,6 +34,6 @@ test('search engines are told to stay away', () => {
   assert.match(read('robots.txt'), /^Disallow: \/$/m)
 })
 
-test('the built file gives no way back to the source', () => {
-  assert.doesNotMatch(read('mirai.js'), /sourceMappingURL/)
+test('the built files give no way back to the source', () => {
+  for (const file of ['mirai.js', 'subdl.js', 'subsource.js']) assert.doesNotMatch(read(file), /sourceMappingURL/)
 })

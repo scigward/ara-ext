@@ -25,5 +25,69 @@
         "default": true
       }
     }
+  },
+  {
+    "manifestVersion": 2,
+    "deprecated": false,
+    "name": "SubDL",
+    "version": "1.0.0",
+    "id": "subdl",
+    "type": "subtitle",
+    "accuracy": "high",
+    "icon": "https://subdl.com/logo/fav.png",
+    "media": "sub",
+    "languages": ["SA"],
+    "url": "aHR0cHM6Ly9hcGkuc3ViZGwuY29t",
+    "update": "https://mirai-ext.pages.dev/index.json",
+    "code": "https://mirai-ext.pages.dev/subdl.js",
+    "options": {
+      "subdlKey": {
+        "type": "string",
+        "description": "Your SubDL API key, from subdl.com/panel/api",
+        "default": ""
+      },
+      "maxFiles": {
+        "type": "number",
+        "description": "Most subtitle files to give for one episode",
+        "default": 3
+      },
+      "fonts": {
+        "type": "boolean",
+        "description": "Give the subtitles a built-in Arabic font in place of their own. Turn it off if your device already has the fonts they use",
+        "default": true
+      }
+    }
+  },
+  {
+    "manifestVersion": 2,
+    "deprecated": false,
+    "name": "SubSource",
+    "version": "1.0.0",
+    "id": "subsource",
+    "type": "subtitle",
+    "accuracy": "high",
+    "icon": "https://subsource.net/icon.png",
+    "media": "sub",
+    "languages": ["SA"],
+    "url": "aHR0cHM6Ly9hcGkuc3Vic291cmNlLm5ldA==",
+    "update": "https://mirai-ext.pages.dev/index.json",
+    "code": "https://mirai-ext.pages.dev/subsource.js",
+    "options": {
+      "subsourceKey": {
+        "type": "string",
+        "description": "Your SubSource API key, from your subsource.net profile",
+        "default": ""
+      },
+      "maxFiles": {
+        "type": "number",
+        "description": "Most subtitle files to give for one episode",
+        "default": 3
+      },
+      "fonts": {
+        "type": "boolean",
+        "description": "Give the subtitles a built-in Arabic font in place of their own. Turn it off if your device already has the fonts they use",
+        "default": true
+      }
+    }
   }
 ]

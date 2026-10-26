@@ -5,12 +5,12 @@ import { build } from 'esbuild'
 // public/ is the whole public site, and it is the only folder that ever gets uploaded
 await rm('public', { recursive: true, force: true })
 
-// one file, hayase imports it from a blob so bare imports can't work.
+// one file per extension, hayase imports each from a blob so bare imports can't work.
 // no version in the header: that lives in index.json only, so bumping it never changes the build.
 // no source map either, the source stays private
 await build({
-  entryPoints: ['src/index.ts'],
-  outfile: 'public/mirai.js',
+  entryPoints: { mirai: 'src/index.ts', subdl: 'subs/subdl.ts', subsource: 'subs/subsource.ts' },
+  outdir: 'public',
   bundle: true,
   format: 'esm',
   platform: 'neutral',

@@ -5,11 +5,9 @@ import { readFileSync } from 'node:fs'
 import { liveProblems } from './live.ts'
 
 const origin = process.argv[2] ?? 'https://mirai-ext.pages.dev'
-const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
-const expected = {
-  version: (JSON.parse(read('../index.json')) as Array<{ version: string }>)[0]!.version,
-  bundle: read('../public/mirai.js')
-}
+const read = (name: string) => readFileSync(new URL(`../public/${name}`, import.meta.url), 'utf8')
+const names = ['index.json', ...(JSON.parse(read('index.json')) as Array<{ code: string }>).map(entry => entry.code.slice(entry.code.lastIndexOf('/') + 1))]
+const expected = Object.fromEntries(names.map(name => [name, read(name)]))
 
 // a deploy takes a moment to reach the edge, so a few misses are no reason to panic
 const TRIES = 10
