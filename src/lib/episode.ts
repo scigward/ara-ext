@@ -1,3 +1,5 @@
+import { getJson } from './http.ts'
+
 import type { Clock } from './clock.ts'
 import type { SubtitleQuery } from './types.ts'
 
@@ -15,8 +17,7 @@ export async function episodeOf (query: SubtitleQuery, clock: Clock): Promise<Ep
   const anilist: Episode = { movie: query.media?.format === 'MOVIE', season: 1, episode: query.episode, numbers: [query.episode, absolute] }
   if (anilist.movie) return anilist
   try {
-    const res = await clock.run(query.fetch(`https://api.ani.zip/mappings?anilist_id=${query.anilistId}`))
-    const { episodes } = await clock.run(res.json()) as { episodes?: Record<string, { seasonNumber?: number, episodeNumber?: number }> }
+    const { episodes } = await getJson(query.fetch, `https://api.ani.zip/mappings?anilist_id=${query.anilistId}`, clock) as { episodes?: Record<string, { seasonNumber?: number, episodeNumber?: number }> }
     const { seasonNumber, episodeNumber } = episodes?.[query.episode] ?? {}
     if (seasonNumber && episodeNumber) return { movie: false, season: seasonNumber, episode: episodeNumber, numbers: [episodeNumber, absolute] }
   } catch {}

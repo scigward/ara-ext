@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import subsource from '../../src/subsource/index.ts'
-import { fakeSite } from '../helpers/server.ts'
+import { fakeSite, strict } from '../helpers/server.ts'
 import { buildZip } from '../helpers/zipbuilder.ts'
 
 import type { SubtitleQuery } from '../../src/lib/types.ts'
@@ -31,10 +31,11 @@ function routes (): Routes {
 
 function setup (site = fakeSite(routes())) {
   const keys: Array<string | null> = []
-  const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+  const send = site.fetch
+  const fetchFn = strict((async (input: string | URL | Request, init?: RequestInit) => {
     keys.push(new Headers(init?.headers).get('x-api-key'))
-    return await site.fetch(input, init)
-  }) as typeof fetch
+    return await send(input, init)
+  }) as typeof fetch)
   const query = (extra: Partial<SubtitleQuery> = {}): SubtitleQuery => ({ anilistId: 142329, episode: 1, episodeCount: 11, absoluteEpisodeNumber: 34, titles: ['Kimetsu no Yaiba: Yuukaku-hen', 'Demon Slayer'], imdbId: 'tt9335498', fetch: fetchFn, ...extra })
   return { site, query, keys, urls: () => site.hits.map(hit => hit.url) }
 }

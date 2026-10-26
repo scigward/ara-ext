@@ -50,7 +50,15 @@ export function fakeSite (routes: Record<string, Body | ((hit: Hit) => Body)>, o
     return new Response(Uint8Array.from(partial ? slice(body, range) : body), { status: partial ? 206 : 200 })
   }
 
-  return { fetch: fetchFn as typeof fetch, hits }
+  return { fetch: strict(fetchFn as typeof fetch), hits }
+}
+
+// outside ios hayase hands the browser's own fetch over as query.fetch, and a browser refuses it called as a method
+export function strict (inner: typeof fetch): typeof fetch {
+  return function (this: unknown, input: string | URL | Request, init?: RequestInit) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Failed to execute 'fetch' on 'WorkerGlobalScope': Illegal invocation")
+    return inner(input, init)
+  } as typeof fetch
 }
 
 // the ios extension runtime hands back a bare object: status, ok and the body readers, nothing else
