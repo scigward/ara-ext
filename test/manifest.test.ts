@@ -40,8 +40,8 @@ test('three separate extensions with what hayase insists on when importing, and 
 
 test('update and code point at the pages site, the icon is the favicon of the site itself', () => {
   for (const entry of manifest) {
-    assert.equal(entry.update, 'https://mirai-ext.pages.dev/index.json')
-    assert.equal(entry.code, `https://mirai-ext.pages.dev/${expected[entry.id]!.file}`)
+    assert.equal(entry.update, 'https://ext-ara.pages.dev/index.json')
+    assert.equal(entry.code, `https://ext-ara.pages.dev/${expected[entry.id]!.file}`)
     assert.match(entry.icon, expected[entry.id]!.icon)
   }
 })

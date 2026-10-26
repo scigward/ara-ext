@@ -11,8 +11,8 @@
     "media": "sub",
     "languages": ["SA"],
     "url": "aHR0cHM6Ly9taXJhaWFuaW1lLm5ldA==",
-    "update": "https://mirai-ext.pages.dev/index.json",
-    "code": "https://mirai-ext.pages.dev/mirai.js",
+    "update": "https://ext-ara.pages.dev/index.json",
+    "code": "https://ext-ara.pages.dev/mirai.js",
     "options": {
       "maxFiles": {
         "type": "number",
@@ -38,8 +38,8 @@
     "media": "sub",
     "languages": ["SA"],
     "url": "aHR0cHM6Ly9hcGkuc3ViZGwuY29t",
-    "update": "https://mirai-ext.pages.dev/index.json",
-    "code": "https://mirai-ext.pages.dev/subdl.js",
+    "update": "https://ext-ara.pages.dev/index.json",
+    "code": "https://ext-ara.pages.dev/subdl.js",
     "options": {
       "subdlKey": {
         "type": "string",
@@ -70,8 +70,8 @@
     "media": "sub",
     "languages": ["SA"],
     "url": "aHR0cHM6Ly9hcGkuc3Vic291cmNlLm5ldA==",
-    "update": "https://mirai-ext.pages.dev/index.json",
-    "code": "https://mirai-ext.pages.dev/subsource.js",
+    "update": "https://ext-ara.pages.dev/index.json",
+    "code": "https://ext-ara.pages.dev/subsource.js",
     "options": {
       "subsourceKey": {
         "type": "string",
