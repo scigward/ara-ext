@@ -42,8 +42,8 @@ export default new class SubDL {
     const { subtitles = [] } = res ? await clock.run(res.json()) as { subtitles?: Item[] } : {}
     const tv = query.media?.format === 'TV' || query.media?.format === 'TV_SHORT'
     const items = subtitles.filter(item => item.url && (movie || !item.season || item.season === season) &&
-      // a pack of ovas or specials is no tv episode
-      !(item.full_season && tv && EXTRAS.test(item.release_name ?? '')))
+      // an ova or special release is no tv episode
+      !(tv && EXTRAS.test(item.release_name ?? '')))
     // packs first, the site's order otherwise. singles still get their turn, a pack can hold nothing for this episode
     const take = maxFiles(options) + 2
     const chosen = [...items.filter(item => item.full_season).slice(0, take), ...items.filter(item => !item.full_season).slice(0, take)]

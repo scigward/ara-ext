@@ -152,16 +152,17 @@ test('a release of another year is another show, and single uploads still come a
   assert.ok(!urls().includes(`${API}/subtitles/39/download`), 'the other year is never downloaded')
 })
 
-test('a pack of ovas is skipped for a tv show, not for an ova', async () => {
+test('ova packs and singles are skipped for a tv show, not for an ova', async () => {
   const site = fakeSite({
     ...routes(),
-    [`${API}/subtitles?movieId=7&language=arabic&limit=100&sort=popular`]: JSON.stringify({ data: [{ subtitleId: 50, releaseInfo: 'Demon Slayer ova حلقات اوفا فقط' }] }),
-    [`${API}/subtitles/50/download`]: buildZip([{ name: 'Demon Slayer OVA 2 e1.srt', data: srt('ova') }])
+    [`${API}/subtitles?movieId=7&language=arabic&limit=100&sort=popular`]: JSON.stringify({ data: [{ subtitleId: 50, releaseInfo: 'Demon Slayer ova حلقات اوفا فقط' }, { subtitleId: 51, releaseInfo: 'Demon Slayer OVA 1' }] }),
+    [`${API}/subtitles/50/download`]: buildZip([{ name: 'Demon Slayer OVA 2 e1.srt', data: srt('ova') }]),
+    [`${API}/subtitles/51/download`]: buildZip([{ name: 'Demon Slayer OVA 1.srt', data: srt('ova single') }])
   })
   const { query, urls } = setup(site)
   assert.deepEqual(await subsource.single(query({ media: { format: 'TV' } }), { subsourceKey: KEY, fonts: false }), [])
-  assert.ok(!urls().includes(`${API}/subtitles/50/download`))
-  assert.equal((await subsource.single(query({ media: { format: 'OVA' } }), { subsourceKey: KEY, fonts: false })).length, 1)
+  assert.ok(!urls().some(url => /\/subtitles\/5[01]\/download/.test(url)))
+  assert.equal((await subsource.single(query({ media: { format: 'OVA' } }), { subsourceKey: KEY, fonts: false })).length, 2)
 })
 
 test('a refused key is told', async () => {

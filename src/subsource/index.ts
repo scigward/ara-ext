@@ -77,7 +77,8 @@ export default new class SubSource {
       const kinds = names.map(kindOf)
       const kind = any || kinds.includes('one') ? 'one' : kinds.includes('other') ? undefined : kinds[0]
       if (typeof subtitle.subtitleId !== 'number' || !kind || (names.length && names.every(elsewhere))) return []
-      if (kind === 'pack' && tv && names.some(name => EXTRAS.test(name))) return []
+      // an ova or special release is no tv episode
+      if (tv && names.some(name => EXTRAS.test(name))) return []
       return [{ id: subtitle.subtitleId, release: names[any ? 0 : kinds.indexOf(kind)] ?? '', pack: kind === 'pack', who: subtitle.contributors?.[0]?.displayname }]
     })
     // packs first, the site's popular order otherwise. singles still get their turn, a pack can hold nothing for this episode

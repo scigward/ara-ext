@@ -161,7 +161,7 @@ export function describe (path: string): Described | undefined {
   }
 }
 
-// a release of ovas or specials, no tv episode is in it
+// a release of an ova or a special, it's no tv episode
 export const EXTRAS = /\b(?:OVA|OAD|Specials?)\b|[اأ]وفا/i
 
 // a release that says it covers a run of episodes: "[1 ~ 13]", "(01-25)", "EP01A+B ~ 25End", "E01-E12"
