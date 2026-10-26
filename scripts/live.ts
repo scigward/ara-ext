@@ -2,7 +2,7 @@
 // kept apart from the cli so the tests can hand it a fake fetch
 
 // none of these may exist. pages says 200 to unknown paths unless there is a 404.html
-const GONE = ['/src/index.ts', '/mirai.js.map', '/package.json', '/.git/config', '/test/', '/nothing-here']
+const GONE = ['/src/lib/http.ts', '/package.json', '/.git/config', '/test/', '/nothing-here']
 
 // files: what was built, byte for byte, by name
 export async function liveProblems (origin: string, files: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<string[]> {

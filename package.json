@@ -1,7 +1,7 @@
 {
-  "name": "mirai-ext",
+  "name": "ext-ara",
   "private": true,
-  "description": "arabic subtitles from miraianime.net for hayase",
+  "description": "arabic subtitle extensions for hayase",
   "license": "MIT",
   "type": "module",
   "engines": {

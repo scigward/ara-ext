@@ -42,9 +42,9 @@ test('a file that did not go up is caught', async () => {
 })
 
 test('a site that answers 200 for paths it should not have is caught, once per path', async () => {
-  const site = { ...good(), '/mirai.js.map': { body: 'map' }, '/package.json': { body: '{}' } }
+  const site = { ...good(), '/src/lib/http.ts': { body: 'source' }, '/package.json': { body: '{}' } }
   assert.deepEqual(await check(site), [
-    '/mirai.js.map answered 200, it must be 404',
+    '/src/lib/http.ts answered 200, it must be 404',
     '/package.json answered 200, it must be 404'
   ])
 })

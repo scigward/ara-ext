@@ -1,6 +1,6 @@
 import { deflateSync } from 'fflate'
 
-import { crc32 } from '../../src/zip.ts'
+import { crc32 } from '../../src/lib/zip.ts'
 
 export interface Item {
   name: string | Uint8Array

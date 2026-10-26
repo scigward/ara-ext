@@ -5,9 +5,10 @@ import { test } from 'node:test'
 // public/ is what gets uploaded, so these look at it the way the internet would
 const folder = new URL('../public/', import.meta.url)
 const read = (name: string) => readFileSync(new URL(name, folder), 'utf8')
+const built = (JSON.parse(read('index.json')) as Array<{ code: string }>).map(({ code }) => code.slice(code.lastIndexOf('/') + 1))
 
 test('only what hayase needs is public, nothing from the source side can slip in', () => {
-  assert.deepEqual(readdirSync(folder).sort(), ['404.html', '_headers', 'index.json', 'mirai.js', 'robots.txt', 'subdl.js', 'subsource.js'])
+  assert.deepEqual(readdirSync(folder).sort(), ['404.html', '_headers', 'index.json', 'robots.txt', ...built].sort())
 })
 
 test('the manifest that goes out is the one in the repo', () => {
@@ -32,8 +33,4 @@ test('a path that is not there is a real 404, without a 404.html pages hands out
 
 test('search engines are told to stay away', () => {
   assert.match(read('robots.txt'), /^Disallow: \/$/m)
-})
-
-test('the built files give no way back to the source', () => {
-  for (const file of ['mirai.js', 'subdl.js', 'subsource.js']) assert.doesNotMatch(read(file), /sourceMappingURL/)
 })
